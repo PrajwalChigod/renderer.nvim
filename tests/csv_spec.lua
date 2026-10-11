@@ -26,8 +26,6 @@ describe('csv', function()
             setup(filetype, { 'markdown', filetype })
             local handler = require('renderer.handler.csv')
             assert.is_not_nil(handler.queries[filetype])
-            -- nothing is dispatched to a renderer yet
-            util.assert_view(util.marks(), { 'a,b', '1,2' })
         end)
 
         it(filetype .. ' does not attach when not listed', function()
@@ -70,5 +68,265 @@ describe('csv', function()
             csv = { sample_rows = 'many' },
         })
         assert.is_true(#state.validate() > 0)
+    end)
+end)
+
+---@param marks renderer.test.Marks
+---@param row integer
+---@param width integer
+---@param highlight string
+local function line(marks, row, width, highlight)
+    marks:add({ row, row }, { 0, width }, {
+        hl_eol = false,
+        hl_group = highlight,
+    })
+end
+
+---@param marks renderer.test.Marks
+---@param row integer
+---@param col integer
+---@param highlight string
+---@param border? string
+local function border(marks, row, col, highlight, border)
+    marks:add({ row, row }, { col, col + 1 }, {
+        virt_text = { { border or '│', highlight } },
+        virt_text_pos = 'overlay',
+    })
+end
+
+---@param marks renderer.test.Marks
+---@param row integer
+---@param col integer
+---@param spaces integer
+---@param highlight string
+local function pad(marks, row, col, spaces, highlight)
+    marks:add(row, col, {
+        priority = 0,
+        virt_text = { { (' '):rep(spaces), highlight } },
+        virt_text_pos = 'inline',
+    })
+end
+
+---@param marks renderer.test.Marks
+---@param row integer
+---@param text string
+local function rule(marks, row, text)
+    marks:add(row, 0, {
+        virt_lines = { { { text, 'RmTableHead' } } },
+        virt_lines_above = false,
+    })
+end
+
+---@param opts? renderer.UserConfig
+---@param lines? string[]
+---@param filetype? string
+local function render(lines, opts, filetype)
+    local config = vim.tbl_deep_extend('force', {
+        file_types = { 'markdown', 'csv', 'tsv', 'psv' },
+    }, opts or {})
+    util.setup.text(lines, config, filetype or 'csv')
+end
+
+---@type string[]
+local plain = { 'name,city', 'Ada,London', 'Alan Turing,Rome' }
+
+describe('csv rows', function()
+    it('line up fields in columns, header rule below the first row', function()
+        render(plain)
+        local marks = util.marks()
+        line(marks, 0, 9, 'RmTableHead')
+        pad(marks, 0, 4, 7, 'RmTableHead')
+        border(marks, 0, 4, 'RmTableHead')
+        pad(marks, 0, 9, 2, 'RmTableHead')
+        rule(marks, 0, '───────────┼──────')
+        line(marks, 1, 10, 'RmTableRow')
+        pad(marks, 1, 3, 8, 'RmTableRow')
+        border(marks, 1, 3, 'RmTableRow')
+        line(marks, 2, 16, 'RmTableRow')
+        border(marks, 2, 11, 'RmTableRow')
+        pad(marks, 2, 16, 2, 'RmTableRow')
+        util.assert_view(marks, {
+            'name       │city',
+            '───────────┼──────',
+            'Ada        │London',
+            'Alan Turing│Rome',
+        })
+    end)
+
+    it('header = false draws the first row like any other', function()
+        render(plain, { csv = { header = false } })
+        local marks = util.marks()
+        line(marks, 0, 9, 'RmTableRow')
+        pad(marks, 0, 4, 7, 'RmTableRow')
+        border(marks, 0, 4, 'RmTableRow')
+        pad(marks, 0, 9, 2, 'RmTableRow')
+        line(marks, 1, 10, 'RmTableRow')
+        pad(marks, 1, 3, 8, 'RmTableRow')
+        border(marks, 1, 3, 'RmTableRow')
+        line(marks, 2, 16, 'RmTableRow')
+        border(marks, 2, 11, 'RmTableRow')
+        pad(marks, 2, 16, 2, 'RmTableRow')
+        util.assert_view(marks, {
+            'name       │city',
+            'Ada        │London',
+            'Alan Turing│Rome',
+        })
+    end)
+
+    it('align numbers to the right and text to the left', function()
+        render({
+            'item,qty,price',
+            'apple,3,0.5',
+            'melon,120,-12.25',
+            'fig,7,4',
+        })
+        util.assert_screen({
+            'item │qty│price',
+            '─────┼───┼──────',
+            'apple│  3│   0.5',
+            'melon│120│-12.25',
+            'fig  │  7│     4',
+        })
+    end)
+
+    it('keep a quoted field with a comma in one column', function()
+        render({ 'a,b', '"x, y",z', 'q,r' })
+        util.assert_screen({
+            'a     │b',
+            '──────┼─',
+            '"x, y"│z',
+            'q     │r',
+        })
+    end)
+
+    it('leave a row with a missing last field aligned', function()
+        render({ 'id,name,score', '1,Ada', '22,Alan,5' })
+        util.assert_screen({
+            'id│name│score',
+            '──┼────┼─────',
+            ' 1│Ada',
+            '22│Alan│    5',
+        })
+    end)
+
+    it('pad an empty field', function()
+        render({ 'a,b,c', '1,,3', '22,x,' })
+        util.assert_screen({
+            'a │b│c',
+            '──┼─┼─',
+            ' 1│ │3',
+            '22│x│',
+        })
+    end)
+
+    it('leave a row with a line break in a field as source', function()
+        render({ 'a,b', '"x', 'y",z', 'q,r' })
+        util.assert_screen({
+            'a│b',
+            '─┼─',
+            '"x',
+            'y",z',
+            'q│r',
+        })
+    end)
+
+    it('render nothing when disabled', function()
+        render(plain, { csv = { enabled = false } })
+        util.assert_marks({})
+        util.assert_screen(plain)
+    end)
+
+    for filetype, separator in pairs({ tsv = '\t', psv = '|' }) do
+        it(filetype .. ' renders the same table', function()
+            local lines = vim.tbl_map(function(text)
+                return (text:gsub(',', separator))
+            end, plain)
+            render(lines, nil, filetype)
+            util.assert_screen({
+                'name       │city',
+                '───────────┼──────',
+                'Ada        │London',
+                'Alan Turing│Rome',
+            })
+        end)
+    end
+
+    it('shows the source of the row under the cursor', function()
+        render(plain, { anti_conceal = { enabled = true } })
+        util.set_row(2)
+        util.assert_screen({
+            'name       │city',
+            '───────────┼──────',
+            'Ada,London',
+            'Alan Turing│Rome',
+        })
+    end)
+end)
+
+describe('csv window', function()
+    -- the first update of a buffer runs at once and the next ones inside the
+    -- debounce window are dropped, so wait before acting on the buffer
+    local function settle()
+        vim.wait(150)
+    end
+
+    it('keeps rendering after scrolling right', function()
+        local long = ('x'):rep(120)
+        render({ 'a,b', long .. ',1', 'c,d' })
+        local before = #util.actual_marks()
+        assert.is_true(before > 0)
+        settle()
+        vim.cmd('normal! 5zl')
+        vim.api.nvim_exec_autocmds('WinScrolled', {})
+        vim.wait(0)
+        assert.same(5, vim.fn.winsaveview().leftcol)
+        assert.same(before, #util.actual_marks())
+    end)
+
+    it('turns wrap off while rendered and restores it after', function()
+        local filetype =
+            { csv = { win_options = { wrap = { default = true } } } }
+        render(plain, { overrides = { filetype = filetype } })
+        assert.is_false(vim.wo.wrap)
+        settle()
+        require('renderer').disable()
+        vim.wait(0)
+        assert.is_true(vim.wo.wrap)
+        settle()
+        require('renderer').enable()
+        vim.wait(0)
+        assert.is_false(vim.wo.wrap)
+    end)
+
+    it('widens a column when a field becomes the widest', function()
+        render(plain)
+        settle()
+        local row = { 'Ada Lovelace Byron,London' }
+        vim.api.nvim_buf_set_lines(0, 1, 2, false, row)
+        vim.api.nvim_exec_autocmds('TextChanged', {})
+        vim.wait(0)
+        util.assert_screen({
+            'name              │city',
+            '──────────────────┼──────',
+            'Ada Lovelace Byron│London',
+            'Alan Turing       │Rome',
+        })
+    end)
+
+    it('keeps a column wide after its widest row scrolls away', function()
+        local lines = { 'a,b', 'wide field,1' }
+        for i = 1, 100 do
+            lines[#lines + 1] = ('%d,%d'):format(i, i)
+        end
+        -- only the first rows are sampled, the rows in view are added later
+        render(lines, { csv = { sample_rows = 2 } })
+        settle()
+        vim.cmd('normal! G')
+        vim.api.nvim_exec_autocmds('WinScrolled', {})
+        vim.wait(0)
+        local buf = vim.api.nvim_get_current_buf()
+        assert.same(10, require('renderer.render.csv.widths').get(buf)[1])
+        local screen = util.actual_screen()
+        assert.is_true(vim.tbl_contains(screen, '       100│100'))
     end)
 end)

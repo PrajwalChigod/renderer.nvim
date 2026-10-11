@@ -1,5 +1,6 @@
 local Context = require('renderer.request.context')
 local Marks = require('renderer.lib.marks')
+local Widths = require('renderer.render.csv.widths')
 
 ---@class renderer.handler.Csv: renderer.Handler
 local M = {}
@@ -29,18 +30,33 @@ end
 function M.parse(ctx)
     local query = M.query(ctx)
     ---@type table<string, renderer.Render>
-    local renders = {}
+    local renders = {
+        row = require('renderer.render.csv.row'),
+    }
     local context = Context.get(ctx.buf)
     if not context.config.csv.enabled then
         return {}
     end
-    local marks = Marks.new(context, true)
+    -- every row is padded to the widest field of its column, so the widths
+    -- must be known before the first one is drawn
+    ---@type { capture: string, node: renderer.Node }[]
+    local nodes = {}
     context.view:nodes(ctx.root, query, function(capture, node)
-        local render = renders[capture]
-        if render then
-            render:execute(context, marks, node)
-        end
+        nodes[#nodes + 1] = { capture = capture, node = node }
     end)
+    Widths.update(
+        context,
+        ctx.root,
+        vim.tbl_map(function(item)
+            return item.node
+        end, nodes)
+    )
+    local marks = Marks.new(context, true)
+    for _, item in ipairs(nodes) do
+        local render = renders[item.capture]
+        assert(render, ('unhandled csv capture: %s'):format(item.capture))
+        render:execute(context, marks, item.node)
+    end
     return marks:get()
 end
 

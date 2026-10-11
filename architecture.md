@@ -34,8 +34,8 @@ It is built for markdown. HTML, LaTeX and YAML are handled because they appear
 inside markdown, and HTML is also rendered as a file of its own. What the core
 needs to know about a file type is declared in one place, a format, so that
 more file types can be added as files. Markdown, plain HTML, CSV, TSV and PSV
-are the formats today. The CSV family is registered and configured but nothing
-is drawn for it yet.
+are the formats today. The CSV family is the first one built from nothing: it
+adds files and edits none of `core/`.
 
 ## The pipeline in one view
 
@@ -308,7 +308,7 @@ capture name to renderer, and a loop.
 | `handler/markdown.lua`        | code, dash, document, footnote, heading, list, paragraph, quote, section, table            |
 | `handler/markdown_inline.lua` | code, highlight, link, shortcut                                                            |
 | `handler/html.lua`            | comment, tag, doctype, entity, raw                                                         |
-| `handler/csv.lua`             | row, with no renderer yet                                                                  |
+| `handler/csv.lua`             | row                                                                                        |
 | `handler/yaml.lua`            | bullet, link                                                                               |
 | `handler/latex.lua`           | no query: collects formula nodes, converts them with an external tool, emits virtual lines |
 
@@ -378,6 +378,31 @@ between the tags of the table, and that line to fit the window, because a line
 that wraps takes more than one line on screen even with its text concealed.
 Otherwise the whole element is replaced with one `marks:replace`, and the
 cursor steps over it.
+
+### CSV renderers
+
+`handler/csv.lua` serves `csv`, `tsv` and `psv`. It collects the rows in view,
+asks `render/csv/widths.lua` for the column widths, and only then runs
+`render/csv/row.lua` for each row, because a row is padded to the widest field
+of its column and so needs widths that come from other rows.
+
+`row.lua` walks the children of a `row` node: a named child is a field, an
+anonymous child is a separator. Each field gets inline virtual text up to the
+column width, after the field for text and before it for `number` and `float`
+(and a number the grammar read as text because of its sign). Each separator is
+overlaid with `csv.border`, except a tab: a tab fills to the next tab stop, which
+moves with the padding in front of it, so it is concealed and the border added
+inline next to it. The first row of the document, when `csv.header` is true,
+uses `csv.head` and gets one virtual line below it as a rule. A row that spans
+several lines, because a quoted field holds a line break, is left as source and
+takes no part in the widths.
+
+`widths.lua` keeps one small cache per buffer, keyed by `changedtick`, `sample_rows`
+and `max_width`. It is filled from the first `sample_rows` rows and every row that
+comes into view, a width only grows, and any change of the buffer starts it again.
+Measuring the whole file is too slow and measuring only the view makes columns
+jump while scrolling. This is the one place state outlives a parse (rule 4 is about
+the request context), so it is the only module to clear on `BufWipeout`.
 
 ## Formats
 
@@ -841,7 +866,7 @@ lua/renderer/
   core/reader.lua    NEW   HTML reader view
   core/manager.lua   CHG   size check for converted buffers
   health.lua         CHG   converters from registry
-  handler/, render/  ADD   csv renderers, mermaid handler
+  handler/, render/  ADD   mermaid handler
   settings.lua       ADD   csv, mermaid, convert, reader blocks
 ```
 
@@ -903,8 +928,6 @@ is missing a field and the fix belongs there.
 
 ## Not verified
 
-- How the treesitter `csv` grammars parse a quoted field containing a newline,
-  and whether an empty field produces a node.
 - That `markdown` as the filetype of a converted buffer causes no trouble with
   common markdown ftplugins and language servers. `buftype = 'nowrite'` should
   keep servers from attaching, to be confirmed with the convert layer.
