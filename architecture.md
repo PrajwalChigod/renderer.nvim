@@ -392,12 +392,14 @@ column width, after the field for text and before it for `number` and `float`
 (and a number the grammar read as text because of its sign). Each separator is
 overlaid with `csv.border`, except a tab: a tab fills to the next tab stop,
 which moves with the padding in front of it, so it is concealed and the border
-added inline next to it. A field wider than its column, which `max_width` caps,
-is cut: what fits is kept, the rest concealed and an `…` added in its place. The
-first row of the document, when `csv.header` is true, uses `csv.head` and gets
-one virtual line below it as a rule. A row that spans several lines, because a
-quoted field holds a line break, is left as source and takes no part in the
-widths.
+added inline next to it. A border that is not one cell wide is added the same
+way, drawn over the separator it would cover the field after it. A field wider
+than its column, which `max_width` caps, is cut: what fits is kept, the rest
+concealed and an `…` added in its place. The first row of the document, when
+`csv.header` is true, uses `csv.head` and gets one virtual line below it as a
+rule, with `virt_lines_overflow = 'scroll'` so it moves sideways with the rows.
+A row that spans several lines, because a quoted field holds a line break, is
+left as source and takes no part in the widths.
 
 The handler map is shared between formats, so a `csv` block fenced in a
 markdown file reaches `handler/csv.lua` as an injected tree. The handler

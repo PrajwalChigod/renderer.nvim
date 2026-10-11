@@ -110,12 +110,14 @@ function Render:cut(field, width)
 end
 
 ---A tab fills up to the next tab stop, which depends on the padding in front
----of it, so it is hidden and the border added next to it instead of over it
+---of it, so it is hidden and the border added next to it instead of over it.
+---The same goes for a border that is not one cell wide: drawn over the
+---separator it would cover the field after it
 ---@private
 ---@param separator renderer.Node
 function Render:separator(separator)
     local text = { { self.config.border, self.highlight } }
-    if separator.text == '\t' then
+    if separator.text == '\t' or str.width(self.config.border) ~= 1 then
         self.marks:over(self.config, 'table_border', separator, {
             conceal = '',
         })
@@ -131,7 +133,9 @@ function Render:separator(separator)
     end
 end
 
----A line below the header, borders cross it where the columns meet
+---A line below the header, borders cross it where the columns meet. The
+---crossing is as wide as the border, and the line scrolls sideways with the
+---rows, a virtual line stays in place otherwise
 ---@private
 function Render:rule()
     local border = self.context.config.pipe_table.border
@@ -139,11 +143,19 @@ function Render:rule()
     for i, width in ipairs(self.widths) do
         parts[i] = border[11]:rep(width)
     end
-    local line = self:line()
-        :text(table.concat(parts, border[5]), self.highlight)
+    local size = str.width(self.config.border)
+    local cross = ''
+    if size > 0 then
+        local before = math.floor((size - 1) / 2)
+        cross = border[11]:rep(before)
+            .. border[5]
+            .. border[11]:rep(size - 1 - before)
+    end
+    local line = self:line():text(table.concat(parts, cross), self.highlight)
     self.marks:add(self.config, 'virtual_lines', self.node.start_row, 0, {
         virt_lines = { line:get() },
         virt_lines_above = false,
+        virt_lines_overflow = 'scroll',
     })
 end
 

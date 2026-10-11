@@ -278,6 +278,15 @@ describe('csv rows', function()
         })
     end)
 
+    it('hide the separator for a border wider than one cell', function()
+        render({ 'a,b,c', '1,2,3' }, { csv = { border = ' │ ' } })
+        util.assert_screen({
+            'a │ b │ c',
+            '──┼───┼──',
+            '1 │ 2 │ 3',
+        })
+    end)
+
     it('render nothing when disabled', function()
         render(plain, { csv = { enabled = false } })
         util.assert_marks({})
@@ -329,6 +338,20 @@ describe('csv window', function()
         vim.wait(0)
         assert.same(5, vim.fn.winsaveview().leftcol)
         assert.same(before, #util.actual_marks())
+    end)
+
+    it('moves the header rule with the rows when scrolled right', function()
+        render(plain)
+        settle()
+        vim.cmd('normal! 5zl')
+        vim.api.nvim_exec_autocmds('WinScrolled', {})
+        vim.wait(0)
+        util.assert_screen({
+            '      │city',
+            '──────┼──────',
+            '      │London',
+            'Turing│Rome',
+        })
     end)
 
     it('turns wrap off while rendered and restores it after', function()
