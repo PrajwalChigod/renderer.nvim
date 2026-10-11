@@ -9,14 +9,27 @@ local M = {}
 ---@type table<string, vim.treesitter.Query>
 M.queries = {}
 
----Used for csv, tsv and psv, so the language comes from the tree. `ts.parse`
----caches by query text alone, which would hand the csv query to a tsv tree.
+---The handler map is shared between formats, so a csv block fenced in a
+---markdown file reaches this handler as an injected tree. Only a buffer of the
+---csv family is drawn as a table, the fenced block stays a code block.
 ---@private
----@param ctx renderer.handler.Context
+---@param context renderer.request.Context
+---@return string?
+function M.language(context)
+    local format = context.format
+    local language = format and format.root
+    if language and format.handlers[language] == 'renderer.handler.csv' then
+        return language
+    end
+    return nil
+end
+
+---Used for csv, tsv and psv. `ts.parse` caches by query text alone, which
+---would hand the csv query to a tsv tree.
+---@private
+---@param language string
 ---@return vim.treesitter.Query
-function M.query(ctx)
-    local parser = vim.treesitter.get_parser(ctx.buf)
-    local language = parser:language_for_range({ ctx.root:range() }):lang()
+function M.query(language)
     local result = M.queries[language]
     if not result then
         result = vim.treesitter.query.parse(language, '(row) @row')
@@ -28,15 +41,16 @@ end
 ---@param ctx renderer.handler.Context
 ---@return renderer.Mark[]
 function M.parse(ctx)
-    local query = M.query(ctx)
+    local context = Context.get(ctx.buf)
+    local language = M.language(context)
+    if not language or not context.config.csv.enabled then
+        return {}
+    end
+    local query = M.query(language)
     ---@type table<string, renderer.Render>
     local renders = {
         row = require('renderer.render.csv.row'),
     }
-    local context = Context.get(ctx.buf)
-    if not context.config.csv.enabled then
-        return {}
-    end
     -- every row is padded to the widest field of its column, so the widths
     -- must be known before the first one is drawn
     ---@type { capture: string, node: renderer.Node }[]

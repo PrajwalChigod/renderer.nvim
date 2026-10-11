@@ -247,3 +247,8 @@ left as it is.
 
 The same grammars decide what a field is, so a quoted field that holds a line break
 is left as source, and it is not counted when column widths are measured.
+
+## `csv` Blocks In Markdown Are Not Tables
+
+A fenced code block tagged `csv`, `tsv` or `psv` inside a markdown file is drawn as
+a code block. Only a file of one of these types is drawn as a table.

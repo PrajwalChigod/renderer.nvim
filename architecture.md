@@ -399,6 +399,11 @@ one virtual line below it as a rule. A row that spans several lines, because a
 quoted field holds a line break, is left as source and takes no part in the
 widths.
 
+The handler map is shared between formats, so a `csv` block fenced in a
+markdown file reaches `handler/csv.lua` as an injected tree. The handler
+returns no marks unless the buffer's own format is one of the csv family, and
+the block stays a code block.
+
 `widths.lua` keeps one small cache per buffer, keyed by `changedtick`, `sample_rows`
 and `max_width`. It is filled from the first `sample_rows` rows and every row that
 comes into view, a width only grows, and any change of the buffer starts it again.
@@ -473,9 +478,9 @@ return { build('csv'), build('tsv'), build('psv') }
 The three grammars share one definition and differ in the separator, so each
 is its own format with its own root language. A format file returns either one
 format or a list of them, and `format.all()` accepts both. A new handler module
-can serve several languages: `handler/csv.lua` reads the language from the tree
-and keeps one compiled query per language, because `ts.parse` caches by query
-text alone.
+can serve several languages: `handler/csv.lua` reads the language from the root
+of the buffer's format and keeps one compiled query per language, because
+`ts.parse` caches by query text alone.
 
 A format has exactly one root language. **Lookup is by root treesitter
 language, not filetype.** `format.get(buf)` resolves

@@ -34,6 +34,19 @@ describe('csv', function()
         end)
     end
 
+    it('leaves a csv block fenced in markdown as a code block', function()
+        util.setup.text(
+            { '# heading', '', '```csv', 'a,b', '1,2', '```' },
+            { file_types = { 'markdown', 'csv' } }
+        )
+        -- the injected tree reaches the csv handler, which must not stop the
+        -- markdown render nor draw the block as a table
+        assert.is_true(#util.actual_marks() > 0)
+        for _, text in ipairs(util.actual_screen()) do
+            assert.is_nil(text:find('│', 1, true))
+        end
+    end)
+
     it('format defaults reach the buffer config', function()
         setup('csv', { 'markdown', 'csv' })
         local wrap = state.get(0).win_options.wrap
