@@ -11,6 +11,7 @@
 ---@field callout? renderer.callout.UserConfigs
 ---@field checkbox? renderer.checkbox.UserConfig
 ---@field code? renderer.code.UserConfig
+---@field csv? renderer.csv.UserConfig
 ---@field dash? renderer.dash.UserConfig
 ---@field document? renderer.document.UserConfig
 ---@field heading? renderer.heading.UserConfig
@@ -144,6 +145,14 @@
 ---@class (exact) renderer.completion.filter.UserConfig
 ---@field callout? fun(value: renderer.callout.UserConfig): boolean
 ---@field checkbox? fun(value: renderer.checkbox.custom.UserConfig): boolean
+
+---@class (exact) renderer.csv.UserConfig: renderer.base.UserConfig
+---@field header? boolean
+---@field sample_rows? integer
+---@field max_width? integer
+---@field border? string
+---@field head? string
+---@field row? string
 
 ---@class (exact) renderer.dash.UserConfig: renderer.base.UserConfig
 ---@field icon? string

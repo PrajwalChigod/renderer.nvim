@@ -33,8 +33,9 @@ is exactly as it was.
 It is built for markdown. HTML, LaTeX and YAML are handled because they appear
 inside markdown, and HTML is also rendered as a file of its own. What the core
 needs to know about a file type is declared in one place, a format, so that
-more file types can be added as files. Markdown and plain HTML are the two
-formats today.
+more file types can be added as files. Markdown, plain HTML, CSV, TSV and PSV
+are the formats today. The CSV family is registered and configured but nothing
+is drawn for it yet.
 
 ## The pipeline in one view
 
@@ -307,6 +308,7 @@ capture name to renderer, and a loop.
 | `handler/markdown.lua`        | code, dash, document, footnote, heading, list, paragraph, quote, section, table            |
 | `handler/markdown_inline.lua` | code, highlight, link, shortcut                                                            |
 | `handler/html.lua`            | comment, tag, doctype, entity, raw                                                         |
+| `handler/csv.lua`             | row, with no renderer yet                                                                  |
 | `handler/yaml.lua`            | bullet, link                                                                               |
 | `handler/latex.lua`           | no query: collects formula nodes, converts them with an external tool, emits virtual lines |
 
@@ -392,7 +394,7 @@ to it. A format declares what the core needs to know about a file type:
 ---@field scroll? boolean                    keep rendering when scrolled sideways
 ```
 
-There are two formats, `markdown` and `html`:
+There are five formats: `markdown`, `html`, `csv`, `tsv` and `psv`:
 
 ```lua
 -- format/markdown.lua
@@ -422,7 +424,31 @@ return {
     languages = { html = true },
     handlers = { html = 'renderer.handler.html' },
 }
+
+-- format/csv.lua, one builder called for csv, tsv and psv
+local function build(name)
+    return {
+        name = name,
+        root = name,
+        languages = { [name] = true },
+        handlers = { [name] = 'renderer.handler.csv' },
+        scroll = true,
+        defaults = {
+            win_options = {
+                wrap = { default = vim.o.wrap, rendered = false },
+            },
+        },
+    }
+end
+return { build('csv'), build('tsv'), build('psv') }
 ```
+
+The three grammars share one definition and differ in the separator, so each
+is its own format with its own root language. A format file returns either one
+format or a list of them, and `format.all()` accepts both. A new handler module
+can serve several languages: `handler/csv.lua` reads the language from the tree
+and keeps one compiled query per language, because `ts.parse` caches by query
+text alone.
 
 A format has exactly one root language. **Lookup is by root treesitter
 language, not filetype.** `format.get(buf)` resolves
@@ -447,8 +473,9 @@ The handler map is keyed by language and shared between formats.
 `format.handler(language)` looks across all formats, and if two formats name
 the same language they must name the same module; the registry asserts this.
 
-No format sets `defaults` or `scroll` yet. They are there for the formats
-planned in part 2. `context.format` is read by the HTML structure renderers.
+Only the CSV family sets `defaults` and `scroll`: its rows are wider than the
+window, so `wrap` is off while rendered and rendering continues when scrolled
+sideways. `context.format` is read by the HTML structure renderers.
 
 ## Marks
 
@@ -593,8 +620,8 @@ Every user facing change also needs a spec (see Tests) and a line under
 
 Specs are plenary busted files under `tests/`, with unit specs for single
 modules under `tests/unit/`. `tests/minimal_init.lua` loads the dependencies,
-installs the parsers, and starts the treesitter highlighter for `markdown` and
-`html` buffers. `benches/` holds timing specs for larger files.
+installs the parsers, and starts the treesitter highlighter for `markdown`,
+`html`, `csv`, `tsv` and `psv` buffers. `benches/` holds timing specs for larger files.
 
 A render spec sets up a scratch buffer and asserts two things: the exact list
 of marks, and the text on screen.
@@ -634,7 +661,7 @@ remain, and each is addressed by a planned change in part 2.
 | `core/ui.lua` `Updater:parse`      | the buffer has a treesitter parser                      | binary files cannot enter the pipeline            |
 | `core/manager.lua` `should_attach` | the buffer text is the file on disk, for the size check | a large PDF is refused although its text is small |
 | `handler/latex.lua`                | external tools are waited on inside the render pass     | unusable for anything slower than a formula       |
-| `tests/util.lua`, `minimal_init`   | highlighter started for markdown and html only          | a spec for another filetype needs `minimal_init`  |
+| `tests/util.lua`, `minimal_init`   | highlighter started for markdown, html and csv only     | a spec for another filetype needs `minimal_init`  |
 
 ---
 
@@ -683,24 +710,6 @@ LaTeX formulas work this way now, mermaid diagrams will.
 
 The registry itself is in place and described in part 1. The planned formats
 add to it:
-
-- **`scroll` and `defaults` get their first user with CSV.** The same grammar
-  family differs only in its root, so `csv`, `tsv` and `psv` are separate
-  formats built by one shared function.
-
-  ```lua
-  -- format/csv.lua
-  return {
-      name = 'csv',
-      root = 'csv',
-      languages = { csv = true },
-      handlers = { csv = 'renderer.handler.csv' },
-      scroll = true,
-      defaults = {
-          win_options = { wrap = { default = vim.o.wrap, rendered = false } },
-      },
-  }
-  ```
 
 - **A `source` field for model B**, read by `convert/init.lua`:
 
@@ -826,13 +835,13 @@ the converter and the mark change.
 
 ```text
 lua/renderer/
-  format/            ADD   csv.lua, mermaid.lua, docx.lua, pdf.lua
+  format/            ADD   mermaid.lua, docx.lua, pdf.lua
   lib/job.lua        NEW   external tool runner
   convert/init.lua   NEW   BufReadCmd, buffer contract, text decoration
   core/reader.lua    NEW   HTML reader view
   core/manager.lua   CHG   size check for converted buffers
   health.lua         CHG   converters from registry
-  handler/, render/  ADD   csv and mermaid handlers
+  handler/, render/  ADD   csv renderers, mermaid handler
   settings.lua       ADD   csv, mermaid, convert, reader blocks
 ```
 

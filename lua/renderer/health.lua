@@ -3,10 +3,13 @@ local icons = require('renderer.lib.icons')
 local state = require('renderer.state')
 
 ---@alias renderer.health.Language
+---| 'csv'
 ---| 'html'
 ---| 'latex'
 ---| 'markdown'
 ---| 'markdown_inline'
+---| 'psv'
+---| 'tsv'
 ---| 'yaml'
 
 ---@class renderer.Health
@@ -169,10 +172,11 @@ function M.ts_info(language, required, active)
         vim.health.ok('parser: installed')
     else
         local message = 'parser: not installed'
+        local install = M.install(language)
         if not required then
-            vim.health.warn(message, M.disable(language))
+            vim.health.warn(message, { install, M.disable(language) })
         else
-            vim.health.error(message)
+            vim.health.error(message, install)
         end
     end
 
@@ -233,6 +237,13 @@ function M.plugin(name, validate)
             vim.health.ok(name .. ': installed but should not conflict')
         end
     end
+end
+
+---@private
+---@param language renderer.health.Language
+---@return string
+function M.install(language)
+    return 'install it with :TSInstall ' .. language
 end
 
 ---@private
