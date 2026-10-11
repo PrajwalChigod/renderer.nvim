@@ -9,8 +9,8 @@
   is padded to one width, separators become a border, numbers are right aligned
   and the first row is the header with a rule below it, switch with
   `csv.enabled` and `csv.header`. The file is not changed and stays editable,
-  and `wrap` is turned off while rendered. A row holding a quoted line break is
-  left as source
+  and `wrap` is turned off while rendered. A field longer than `csv.max_width` is
+  cut and ends with `…`. A row holding a quoted line break is left as source
 
 ## 0.2.1 (2026-10-10)
 

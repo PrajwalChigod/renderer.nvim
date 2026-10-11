@@ -54,19 +54,57 @@ function Render:header()
     return self.config.header and self.node:get():prev_sibling() == nil
 end
 
----Text is padded after the field, numbers before it
+---Text is padded after the field, numbers before it, and a field wider than
+---its column is cut
 ---@private
 ---@param field renderer.Node
 ---@param index integer
 function Render:field(field, index)
-    local fill = (self.widths[index] or 0) - str.width(field.text)
-    if fill <= 0 then
+    local width = self.widths[index] or 0
+    local fill = width - str.width(field.text)
+    if fill < 0 then
+        self:cut(field, width)
+        return
+    end
+    if fill == 0 then
         return
     end
     local col = Render.numeric(field) and field.start_col or field.end_col
     self.marks:add(self.config, true, field.start_row, col, {
         priority = 0,
         virt_text = self:line():pad(fill, self.highlight):get(),
+        virt_text_pos = 'inline',
+    })
+end
+
+---Keep what fits in front of an ellipsis and conceal the rest
+---@private
+---@param field renderer.Node
+---@param width integer
+function Render:cut(field, width)
+    if width < 1 then
+        return
+    end
+    local kept, used = 0, 0 ---@type integer, integer
+    for _, char in ipairs(str.chars(field.text)) do
+        local next = used + str.width(char)
+        if next > width - 1 then
+            break
+        end
+        kept, used = kept + #char, next
+    end
+    local col = field.start_col + kept
+    self.marks:add(self.config, true, field.start_row, col, {
+        priority = 0,
+        end_row = field.end_row,
+        end_col = field.end_col,
+        conceal = '',
+    })
+    -- a wide character that did not fit leaves the column short of the width
+    local line = self:line():text('…', self.highlight)
+    self.marks:add(self.config, true, field.start_row, col, {
+        priority = 0,
+        virt_text = line:pad(width - used - 1, self.highlight):get(),
         virt_text_pos = 'inline',
     })
 end

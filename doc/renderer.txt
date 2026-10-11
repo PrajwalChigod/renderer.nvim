@@ -55,6 +55,7 @@ Improve viewing Markdown in Neovim
 - Window options: changes option values between `rendered` and `raw` view
 - Large files: only renders visible range, can be entirely disabled based on size
 - Custom rendering: provides extension point where user can add anything
+- Data files: opt in rendering of `csv`, `tsv` and `psv` files as aligned tables
 - Renders the following `markdown` components out of the box:
     - Headings: icon, color, border, padding, width
     - Code blocks: background, language icon , border, padding, width
@@ -84,6 +85,8 @@ Improve viewing Markdown in Neovim
         Used to get `latex` blocks from `markdown` files
     - yaml <https://github.com/tree-sitter-grammars/tree-sitter-yaml> (Optional):
         Used to render elements in `frontmatter` metadata
+    - csv, tsv & psv <https://github.com/tree-sitter-grammars/tree-sitter-csv> (Optional):
+        Used to render `CSV`, `TSV` and `PSV` files
 - Icon provider plugin (Optional): Used for icon above code blocks
     - mini.icons <https://github.com/nvim-mini/mini.nvim/blob/main/readmes/mini-icons.md>
     - nvim-web-devicons <https://github.com/nvim-tree/nvim-web-devicons>

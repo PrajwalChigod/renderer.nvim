@@ -390,12 +390,14 @@ of its column and so needs widths that come from other rows.
 anonymous child is a separator. Each field gets inline virtual text up to the
 column width, after the field for text and before it for `number` and `float`
 (and a number the grammar read as text because of its sign). Each separator is
-overlaid with `csv.border`, except a tab: a tab fills to the next tab stop, which
-moves with the padding in front of it, so it is concealed and the border added
-inline next to it. The first row of the document, when `csv.header` is true,
-uses `csv.head` and gets one virtual line below it as a rule. A row that spans
-several lines, because a quoted field holds a line break, is left as source and
-takes no part in the widths.
+overlaid with `csv.border`, except a tab: a tab fills to the next tab stop,
+which moves with the padding in front of it, so it is concealed and the border
+added inline next to it. A field wider than its column, which `max_width` caps,
+is cut: what fits is kept, the rest concealed and an `…` added in its place. The
+first row of the document, when `csv.header` is true, uses `csv.head` and gets
+one virtual line below it as a rule. A row that spans several lines, because a
+quoted field holds a line break, is left as source and takes no part in the
+widths.
 
 `widths.lua` keeps one small cache per buffer, keyed by `changedtick`, `sample_rows`
 and `max_width`. It is filled from the first `sample_rows` rows and every row that

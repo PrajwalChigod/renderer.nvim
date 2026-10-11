@@ -25,7 +25,7 @@ describe('csv', function()
         it(filetype .. ' runs its handler with its own language', function()
             setup(filetype, { 'markdown', filetype })
             local handler = require('renderer.handler.csv')
-            assert.is_not_nil(handler.queries[filetype])
+            assert.not_nil(handler.queries[filetype])
         end)
 
         it(filetype .. ' does not attach when not listed', function()
@@ -86,10 +86,10 @@ end
 ---@param row integer
 ---@param col integer
 ---@param highlight string
----@param border? string
-local function border(marks, row, col, highlight, border)
+---@param char? string
+local function border(marks, row, col, highlight, char)
     marks:add({ row, row }, { col, col + 1 }, {
-        virt_text = { { border or '│', highlight } },
+        virt_text = { { char or '│', highlight } },
         virt_text_pos = 'overlay',
     })
 end
@@ -227,6 +227,41 @@ describe('csv rows', function()
             '"x',
             'y",z',
             'q│r',
+        })
+    end)
+
+    it('cut a field longer than max_width with an ellipsis', function()
+        render(
+            { 'id,note', '1,short', '2,a rather long note' },
+            { csv = { max_width = 6 } }
+        )
+        util.assert_screen({
+            'id│note',
+            '──┼──────',
+            ' 1│short',
+            ' 2│a rat…',
+        })
+    end)
+
+    it('cut before a wide character that does not fit', function()
+        render({ 'a,b', '1,日本語日本語' }, { csv = { max_width = 4 } })
+        util.assert_screen({
+            'a│b',
+            '─┼────',
+            '1│日…',
+        })
+    end)
+
+    it('shows the whole field on the cursor row', function()
+        render(
+            { 'id,note', '2,a rather long note' },
+            { csv = { max_width = 6 }, anti_conceal = { enabled = true } }
+        )
+        util.set_row(2)
+        util.assert_screen({
+            'id│note',
+            '──┼──────',
+            '2,a rather long note',
         })
     end)
 
