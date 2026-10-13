@@ -32,12 +32,21 @@ vim.opt.rtp:prepend(get_path({ 'plenary.nvim' }))
 vim.cmd.runtime('plugin/plenary.vim')
 
 require('nvim-treesitter')
-    .install({ 'html', 'latex', 'markdown', 'markdown_inline', 'yaml' })
+    .install({
+        'csv',
+        'html',
+        'latex',
+        'markdown',
+        'markdown_inline',
+        'psv',
+        'tsv',
+        'yaml',
+    })
     :wait()
 
 vim.api.nvim_create_autocmd('FileType', {
     group = vim.api.nvim_create_augroup('Highlighter', {}),
-    pattern = { 'markdown', 'html' },
+    pattern = { 'markdown', 'html', 'csv', 'tsv', 'psv' },
     callback = function(args)
         vim.treesitter.start(args.buf)
     end,

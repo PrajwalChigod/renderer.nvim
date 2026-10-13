@@ -8,7 +8,8 @@ inside buffers using treesitter and extmarks. Requires neovim >= 0.12.
 - `plugin/renderer.lua`: entry point, version guard
 - `lua/renderer/settings.lua`: all config defaults, types and schemas
 - `lua/renderer/format/`: format registry, one file per format declaring its
-  root language, parsers, handlers and defaults
+  root language, parsers, handlers and defaults (`csv.lua` declares `csv`,
+  `tsv` and `psv`)
 - `lua/renderer/handler/`: one handler per treesitter language, runs
   queries and dispatches captures to renderers
 - `lua/renderer/render/`: renderers grouped by language, each extends
