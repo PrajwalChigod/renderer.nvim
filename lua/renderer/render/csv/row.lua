@@ -112,7 +112,10 @@ end
 ---A tab fills up to the next tab stop, which depends on the padding in front
 ---of it, so it is hidden and the border added next to it instead of over it.
 ---The same goes for a border that is not one cell wide: drawn over the
----separator it would cover the field after it
+---separator it would cover the field after it. A border over a separator that
+---has scrolled out on the left is hidden, neovim draws it at the first column
+---of the window otherwise. The same option shows the separator instead of the
+---border while it is selected
 ---@private
 ---@param separator renderer.Node
 function Render:separator(separator)
@@ -129,6 +132,7 @@ function Render:separator(separator)
         self.marks:over(self.config, 'table_border', separator, {
             virt_text = text,
             virt_text_pos = 'overlay',
+            virt_text_hide = true,
         })
     end
 end

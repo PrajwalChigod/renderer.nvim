@@ -354,6 +354,28 @@ describe('csv window', function()
         })
     end)
 
+    for filetype, separator in pairs({ csv = ',', psv = '|' }) do
+        it(filetype .. ' hides a border scrolled out on the left', function()
+            local lines = vim.tbl_map(function(text)
+                return (text:gsub(',', separator))
+            end, plain)
+            render(lines, nil, filetype)
+            settle()
+            -- far enough for the separator to leave the window, an overlay
+            -- is drawn at the first column otherwise and covers a character
+            vim.cmd('normal! 13zl')
+            vim.api.nvim_exec_autocmds('WinScrolled', {})
+            vim.wait(0)
+            assert.same(13, vim.fn.winsaveview().leftcol)
+            util.assert_screen({
+                'ity',
+                '─────',
+                'ondon',
+                'ome',
+            })
+        end)
+    end
+
     it('turns wrap off while rendered and restores it after', function()
         local filetype =
             { csv = { win_options = { wrap = { default = true } } } }
