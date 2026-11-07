@@ -2,6 +2,18 @@
 
 ## Pre-release
 
+## 0.3.0 (2026-11-07)
+
+### Features
+
+- render CSV, TSV and PSV files as aligned tables when `csv`, `tsv` or `psv`
+  is added to `file_types` and its tree-sitter parser is installed: every column
+  is padded to one width, separators become a border, numbers are right aligned
+  and the first row is the header with a rule below it, switch with
+  `csv.enabled` and `csv.header`. The file is not changed and stays editable,
+  and `wrap` is turned off while rendered. A field longer than `csv.max_width` is
+  cut and ends with `…`. A row holding a quoted line break is left as source
+
 ## 0.2.1 (2026-10-10)
 
 ### Bug Fixes

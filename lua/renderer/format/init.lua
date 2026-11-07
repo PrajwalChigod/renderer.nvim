@@ -13,20 +13,28 @@ local M = {}
 
 ---@private
 ---@type string[]
-M.names = { 'markdown', 'html' }
+M.names = { 'markdown', 'html', 'csv' }
 
+---A module returns one format, or a list when a single definition builds
+---several, as csv does for csv, tsv and psv.
 ---@private
----@type table<string, renderer.Format>
+---@type table<string, renderer.Format|renderer.Format[]>
 M.loaded = {}
 
 ---@return renderer.Format[]
 function M.all()
     local result = {} ---@type renderer.Format[]
     for _, name in ipairs(M.names) do
-        if not M.loaded[name] then
-            M.loaded[name] = require('renderer.format.' .. name)
+        local module = M.loaded[name]
+        if not module then
+            module = require('renderer.format.' .. name)
+            M.loaded[name] = module
         end
-        result[#result + 1] = M.loaded[name]
+        if module.name then
+            result[#result + 1] = module
+        else
+            vim.list_extend(result, module)
+        end
     end
     return result
 end

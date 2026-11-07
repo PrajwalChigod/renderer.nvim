@@ -14,6 +14,7 @@ local M = {}
 ---@field callout renderer.callout.Configs
 ---@field checkbox renderer.checkbox.Config
 ---@field code renderer.code.Config
+---@field csv renderer.csv.Config
 ---@field dash renderer.dash.Config
 ---@field document renderer.document.Config
 ---@field heading renderer.heading.Config
@@ -101,6 +102,7 @@ M.default = {
     heading = settings.heading.default,
     paragraph = settings.paragraph.default,
     code = settings.code.default,
+    csv = settings.csv.default,
     dash = settings.dash.default,
     document = settings.document.default,
     bullet = settings.bullet.default,

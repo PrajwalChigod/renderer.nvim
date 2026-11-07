@@ -32,6 +32,7 @@ Improve viewing Markdown in Neovim
 - Window options: changes option values between `rendered` and `raw` view
 - Large files: only renders visible range, can be entirely disabled based on size
 - Custom rendering: provides extension point where user can add anything
+- Data files: opt in rendering of `csv`, `tsv` and `psv` files as aligned tables
 - Renders the following `markdown` components out of the box:
   - Headings: icon, color, border, padding, width
   - Code blocks: background, language icon [^1], border, padding, width
@@ -62,6 +63,8 @@ Improve viewing Markdown in Neovim
     Used to get `latex` blocks from `markdown` files
   - [yaml](https://github.com/tree-sitter-grammars/tree-sitter-yaml) (Optional):
     Used to render elements in `frontmatter` metadata
+  - [csv, tsv & psv](https://github.com/tree-sitter-grammars/tree-sitter-csv) (Optional):
+    Used to render `CSV`, `TSV` and `PSV` files
 - Icon provider plugin (Optional): Used for icon above code blocks
   - [mini.icons](https://github.com/nvim-mini/mini.nvim/blob/main/readmes/mini-icons.md)
   - [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons)
@@ -544,6 +547,26 @@ require('renderer').setup({
         -- | language | { disable_background = true, inline = false } |
         -- | full     | uses all default values                       |
         style = 'full',
+    },
+    csv = {
+        -- Turn on / off csv, tsv and psv rendering, only applies to buffers whose filetype is
+        -- listed in `file_types`.
+        enabled = true,
+        -- Additional modes to render csv, tsv and psv.
+        render_modes = false,
+        -- Treat the first row as the header.
+        header = true,
+        -- Number of rows from the top of the file measured to size the columns, the rows on screen
+        -- are always measured as well.
+        sample_rows = 200,
+        -- Maximum width of a column, longer values are cut.
+        max_width = 40,
+        -- Replaces the separator between fields.
+        border = '│',
+        -- Highlight for the header row and the line below it.
+        head = 'RendererTableHead',
+        -- Highlight for every other row.
+        row = 'RendererTableRow',
     },
     dash = {
         -- Useful context to have when evaluating values.
@@ -1035,8 +1058,8 @@ require('renderer').setup({
         -- More granular configuration mechanism, allows different aspects of buffers to have their own
         -- behavior. Values default to the top level configuration if no override is provided. Supports
         -- the following fields:
-        --   enabled, render_modes, debounce, anti_conceal, bullet, callout, checkbox, code, dash,
-        --   document, heading, html, indent, inline_highlight, latex, link, padding, paragraph,
+        --   enabled, render_modes, debounce, anti_conceal, bullet, callout, checkbox, code, csv,
+        --   dash, document, heading, html, indent, inline_highlight, latex, link, padding, paragraph,
         --   pipe_table, quote, sign, win_options, yaml
 
         -- Override for different buflisted values, @see :h 'buflisted'.
@@ -1936,6 +1959,38 @@ markdown, an HTML file gets:
 The page structure rules and the heading icons only apply to a whole HTML file.
 The rest also apply to HTML inside markdown, and can be turned off with the `html`
 options `structure`, `list`, `quote`, `pre`, `rule`, `table` and `entity`.
+
+See [Limitations](doc/limitations.md) for what is not rendered.
+
+## CSV, TSV and PSV Files
+
+Files with comma, tab or pipe separated values render as a table too, they are opt
+in. Install the parsers with `:TSInstall csv tsv psv` and add the file types to
+`file_types`:
+
+```lua
+require('renderer').setup({
+    file_types = { 'markdown', 'csv', 'tsv', 'psv' },
+})
+```
+
+Neovim does not detect `.psv` files by default, so for those also add:
+
+```lua
+vim.filetype.add({ extension = { psv = 'psv' } })
+```
+
+The file is not changed and stays editable, the source of the line under the
+cursor is shown as usual. Every column is padded to one width, each separator is
+drawn as the `csv.border` character, numbers are right aligned and the first row is
+the header, with a rule below it. `wrap` is turned off while rendered. The `csv`
+options set the `header`, the highlights and the widths:
+
+- the width of a column comes from the first `sample_rows` rows and every row that
+  has been on screen, and it only grows until the file changes, so columns do not
+  jump while scrolling
+- a field longer than `max_width` is cut and ends with `…`, the rest is shown
+  again on the cursor line
 
 See [Limitations](doc/limitations.md) for what is not rendered.
 

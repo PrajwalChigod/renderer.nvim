@@ -55,6 +55,7 @@ Improve viewing Markdown in Neovim
 - Window options: changes option values between `rendered` and `raw` view
 - Large files: only renders visible range, can be entirely disabled based on size
 - Custom rendering: provides extension point where user can add anything
+- Data files: opt in rendering of `csv`, `tsv` and `psv` files as aligned tables
 - Renders the following `markdown` components out of the box:
     - Headings: icon, color, border, padding, width
     - Code blocks: background, language icon , border, padding, width
@@ -84,6 +85,8 @@ Improve viewing Markdown in Neovim
         Used to get `latex` blocks from `markdown` files
     - yaml <https://github.com/tree-sitter-grammars/tree-sitter-yaml> (Optional):
         Used to render elements in `frontmatter` metadata
+    - csv, tsv & psv <https://github.com/tree-sitter-grammars/tree-sitter-csv> (Optional):
+        Used to render `CSV`, `TSV` and `PSV` files
 - Icon provider plugin (Optional): Used for icon above code blocks
     - mini.icons <https://github.com/nvim-mini/mini.nvim/blob/main/readmes/mini-icons.md>
     - nvim-web-devicons <https://github.com/nvim-tree/nvim-web-devicons>
@@ -604,6 +607,26 @@ Default Configuration ~
             -- | full     | uses all default values                       |
             style = 'full',
         },
+        csv = {
+            -- Turn on / off csv, tsv and psv rendering, only applies to buffers whose filetype is
+            -- listed in `file_types`.
+            enabled = true,
+            -- Additional modes to render csv, tsv and psv.
+            render_modes = false,
+            -- Treat the first row as the header.
+            header = true,
+            -- Number of rows from the top of the file measured to size the columns, the rows on screen
+            -- are always measured as well.
+            sample_rows = 200,
+            -- Maximum width of a column, longer values are cut.
+            max_width = 40,
+            -- Replaces the separator between fields.
+            border = '│',
+            -- Highlight for the header row and the line below it.
+            head = 'RendererTableHead',
+            -- Highlight for every other row.
+            row = 'RendererTableRow',
+        },
         dash = {
             -- Useful context to have when evaluating values.
             -- | width | width of the current window |
@@ -1094,8 +1117,8 @@ Default Configuration ~
             -- More granular configuration mechanism, allows different aspects of buffers to have their own
             -- behavior. Values default to the top level configuration if no override is provided. Supports
             -- the following fields:
-            --   enabled, render_modes, debounce, anti_conceal, bullet, callout, checkbox, code, dash,
-            --   document, heading, html, indent, inline_highlight, latex, link, padding, paragraph,
+            --   enabled, render_modes, debounce, anti_conceal, bullet, callout, checkbox, code, csv,
+            --   dash, document, heading, html, indent, inline_highlight, latex, link, padding, paragraph,
             --   pipe_table, quote, sign, win_options, yaml
     
             -- Override for different buflisted values, @see :h 'buflisted'.

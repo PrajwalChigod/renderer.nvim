@@ -16,6 +16,7 @@ Config.components = {
     'callout',
     'checkbox',
     'code',
+    'csv',
     'dash',
     'document',
     'heading',

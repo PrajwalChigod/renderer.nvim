@@ -656,6 +656,51 @@ function M.completions.schema()
     }
 end
 
+---@class renderer.csv.Settings
+M.csv = {}
+
+---@class (exact) renderer.csv.Config: renderer.base.Config
+---@field header boolean
+---@field sample_rows integer
+---@field max_width integer
+---@field border string
+---@field head string
+---@field row string
+
+---@type renderer.csv.Config
+M.csv.default = {
+    -- Turn on / off csv, tsv and psv rendering, only applies to buffers whose filetype is
+    -- listed in `file_types`.
+    enabled = true,
+    -- Additional modes to render csv, tsv and psv.
+    render_modes = false,
+    -- Treat the first row as the header.
+    header = true,
+    -- Number of rows from the top of the file measured to size the columns, the rows on screen
+    -- are always measured as well.
+    sample_rows = 200,
+    -- Maximum width of a column, longer values are cut.
+    max_width = 40,
+    -- Replaces the separator between fields.
+    border = '│',
+    -- Highlight for the header row and the line below it.
+    head = 'RendererTableHead',
+    -- Highlight for every other row.
+    row = 'RendererTableRow',
+}
+
+---@return renderer.Schema
+function M.csv.schema()
+    return M.base.schema({
+        header = { type = 'boolean' },
+        sample_rows = { type = 'number' },
+        max_width = { type = 'number' },
+        border = { type = 'string' },
+        head = { type = 'string' },
+        row = { type = 'string' },
+    })
+end
+
 ---@class renderer.dash.Settings
 M.dash = {}
 
@@ -1567,8 +1612,8 @@ M.overrides.default = {
     -- More granular configuration mechanism, allows different aspects of buffers to have their own
     -- behavior. Values default to the top level configuration if no override is provided. Supports
     -- the following fields:
-    --   enabled, render_modes, debounce, anti_conceal, bullet, callout, checkbox, code, dash,
-    --   document, heading, html, indent, inline_highlight, latex, link, padding, paragraph,
+    --   enabled, render_modes, debounce, anti_conceal, bullet, callout, checkbox, code, csv,
+    --   dash, document, heading, html, indent, inline_highlight, latex, link, padding, paragraph,
     --   pipe_table, quote, sign, win_options, yaml
 
     -- Override for different buflisted values, @see :h 'buflisted'.
