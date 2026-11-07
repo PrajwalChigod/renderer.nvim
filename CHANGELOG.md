@@ -2,6 +2,8 @@
 
 ## Pre-release
 
+## 0.4.0 (2026-11-07)
+
 ### Features
 
 - draw a `mermaid` code block as its diagram, using `mermaid-ascii` by default:
