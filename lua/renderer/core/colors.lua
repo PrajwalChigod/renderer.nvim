@@ -43,6 +43,7 @@ M.colors = {
     Dash            = 'LineNr',
     Sign            = 'SignColumn',
     Math            = '@markup.math',
+    Mermaid         = 'RendererCode',
     Indent          = 'Whitespace',
     HtmlComment     = '@comment',
     HtmlBold        = '@markup.strong',

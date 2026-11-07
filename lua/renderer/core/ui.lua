@@ -40,12 +40,23 @@ end
 ---@param force boolean
 function M.update(buf, win, event, force)
     log.buf('info', 'Update', buf, event, ('force %s'):format(force))
-    M.updater.new(buf, win, force):start()
+    M.updater.new(buf, win, event, force):start()
+end
+
+---Reveals now, rather than in the scheduled update, the marks that the cursor
+---reveals from rows they do not cover. Their rows look hidden until then, so
+---the cursor could not be moved onto them. Returns whether any were revealed
+---@param buf integer
+---@param win integer
+---@return boolean
+function M.reveal(buf, win)
+    return M.updater.new(buf, win, 'Reveal', false):reveal()
 end
 
 ---@class renderer.ui.Updater
 ---@field private buf integer
 ---@field private win integer
+---@field private event string
 ---@field private force boolean
 ---@field private decorator renderer.Decorator
 ---@field private config renderer.buf.Config
@@ -55,12 +66,14 @@ Updater.__index = Updater
 
 ---@param buf integer
 ---@param win integer
+---@param event string
 ---@param force boolean
 ---@return renderer.ui.Updater
-function Updater.new(buf, win, force)
+function Updater.new(buf, win, event, force)
     local self = setmetatable({}, Updater)
     self.buf = buf
     self.win = win
+    self.event = event
     self.force = force
     self.decorator = M.get(buf)
     self.config = state.get(buf)
@@ -71,8 +84,13 @@ function Updater:start()
     if not env.valid(self.buf, self.win) then
         return
     end
+    -- debouncing drops updates inside its window, a dropped job update would
+    -- leave the job's output undrawn until the next event
+    local debounce = self.event ~= 'Job'
+        and self:changed()
+        and not env.buf.empty(self.buf)
     self.decorator:schedule(
-        self:changed() and not env.buf.empty(self.buf),
+        debounce,
         self.config.debounce,
         log.runtime('update', function()
             self:run()
@@ -95,12 +113,7 @@ function Updater:run()
         return
     end
     self.mode = env.mode.get() -- mode is only available after this point
-    local format = require('renderer.format').get(self.buf)
-    local scroll = format ~= nil and format.scroll == true
-    local render = self.config.enabled
-        and self.config.resolved:render(self.mode)
-        and (env.win.view(self.win).leftcol == 0 or scroll)
-        and (self.config.render.diff or not env.win.get(self.win, 'diff'))
+    local render = self:rendering()
     log.buf('info', 'Render', self.buf, render)
     local next_state = render and 'rendered' or 'default'
     for _, win in ipairs(env.buf.wins(self.buf)) do
@@ -114,6 +127,17 @@ function Updater:run()
     else
         self:render()
     end
+end
+
+---@private
+---@return boolean
+function Updater:rendering()
+    local format = require('renderer.format').get(self.buf)
+    local scroll = format ~= nil and format.scroll == true
+    return self.config.enabled
+        and self.config.resolved:render(self.mode)
+        and (env.win.view(self.win).leftcol == 0 or scroll)
+        and (self.config.render.diff or not env.win.get(self.win, 'diff'))
 end
 
 ---@private
@@ -171,25 +195,63 @@ end
 
 ---@private
 function Updater:display()
-    local range = self:hidden()
+    self:show()
+    state.on.render({ buf = self.buf, win = self.win })
+end
+
+---@private
+function Updater:show()
+    local range = self:hidden(false)
+    local always = self:hidden(true)
     self.decorator:display(M.ns, function(extmark)
-        return self:hide(extmark, range)
+        return self:hide(extmark, range, always)
     end)
     -- marks can be drawn under a cursor that did not move, i.e. on first
     -- render or after a jump into rows that had not been parsed
     if self.config.anti_conceal.skip_hidden then
         require('renderer.core.cursor').skip(self.buf, self.win, self.mode)
     end
-    state.on.render({ buf = self.buf, win = self.win })
+end
+
+---@return boolean
+function Updater:reveal()
+    -- runs on every cursor move, so the cheap checks go first
+    local extmarks = self.decorator:revealed()
+    if #extmarks == 0 or not env.valid(self.buf, self.win) then
+        return false
+    end
+    -- only an edit makes the marks stale, a view past the parsed rows does not
+    if self.decorator:changed() then
+        return false
+    end
+    self.mode = env.mode.get()
+    if not self:rendering() then
+        return false
+    end
+    local range = self:hidden(false)
+    local always = self:hidden(true)
+    local found = false
+    for _, extmark in ipairs(extmarks) do
+        if extmark:shown() then
+            found = found or self:hide(extmark, range, always)
+        end
+    end
+    if found then
+        self:show()
+    end
+    return found
 end
 
 ---@private
+---@param force boolean ignore that anti-conceal is off, for marks that ask
 ---@return renderer.Range?
-function Updater:hidden()
+function Updater:hidden(force)
     -- anti-conceal is not enabled -> hide nothing
     -- in disabled mode -> hide nothing
     local config = self.config.anti_conceal
-    if not config.enabled or env.mode.is(self.mode, config.disabled_modes) then
+    local off = not config.enabled
+        or env.mode.is(self.mode, config.disabled_modes)
+    if off and not force then
         return nil
     end
     -- row is not known -> buffer is not active -> hide nothing
@@ -210,9 +272,13 @@ end
 ---@private
 ---@param extmark renderer.Extmark
 ---@param range? renderer.Range
+---@param always? renderer.Range
 ---@return boolean
-function Updater:hide(extmark, range)
+function Updater:hide(extmark, range, always)
     local mark = extmark:get()
+    if mark.reveal and mark.reveal.always then
+        range = always
+    end
 
     -- virtual row -> no editable screen cells -> must hide
     if mark.replace then

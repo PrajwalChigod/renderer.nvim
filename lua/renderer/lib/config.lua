@@ -25,6 +25,7 @@ Config.components = {
     'inline_highlight',
     'latex',
     'link',
+    'mermaid',
     'padding',
     'paragraph',
     'pipe_table',

@@ -2,6 +2,18 @@
 
 ## Pre-release
 
+## 0.4.0 (2026-11-07)
+
+### Features
+
+- draw a `mermaid` code block as its diagram, using `mermaid-ascii` by default:
+  the fence line keeps its language header and the diagram replaces the code
+  below it. The tool runs in the background, the block stays a code block
+  until the diagram is ready or when the tool fails, and moving the cursor
+  onto the block shows the source for editing. Switch with `mermaid.enabled`,
+  pick the tool with `mermaid.converter`, and set `mermaid.always_reveal` to
+  edit diagrams in place while `anti_conceal` is disabled
+
 ## 0.3.0 (2026-11-07)
 
 ### Features

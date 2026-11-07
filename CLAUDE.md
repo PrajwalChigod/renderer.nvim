@@ -14,6 +14,8 @@ inside buffers using treesitter and extmarks. Requires neovim >= 0.12.
   queries and dispatches captures to renderers
 - `lua/renderer/render/`: renderers grouped by language, each extends
   `render/base.lua` with `setup()` and `run()`
+- `lua/renderer/lib/job.lua`: the only place that starts a process, runs
+  external tools in the background and caches their output
 - `lua/renderer/core/colors.lua`: `Renderer*` highlight groups
 - `lua/renderer/core/cursor.lua`: moves the cursor off lines that are hidden
   completely

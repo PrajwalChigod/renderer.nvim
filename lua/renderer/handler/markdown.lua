@@ -50,12 +50,21 @@ function M.parse(ctx)
         section = require('renderer.render.markdown.section'),
         table = require('renderer.render.markdown.table'),
     }
+    -- run after the renderer of the same capture, on the same node
+    ---@type table<string, renderer.Render>
+    local extras = {
+        code = require('renderer.render.markdown.mermaid'),
+    }
     local context = Context.get(ctx.buf)
     local marks = Marks.new(context, false)
     context.view:nodes(ctx.root, query, function(capture, node)
         local render = renders[capture]
         assert(render, ('unhandled markdown capture: %s'):format(capture))
         render:execute(context, marks, node)
+        local extra = extras[capture]
+        if extra then
+            extra:execute(context, marks, node)
+        end
     end)
     return marks:get()
 end

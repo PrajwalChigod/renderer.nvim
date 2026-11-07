@@ -8,6 +8,7 @@ local state = require('renderer.state')
 ---| 'latex'
 ---| 'markdown'
 ---| 'markdown_inline'
+---| 'mermaid'
 ---| 'psv'
 ---| 'tsv'
 ---| 'yaml'
@@ -16,7 +17,7 @@ local state = require('renderer.state')
 local M = {}
 
 ---@private
-M.version = '0.3.0'
+M.version = '0.4.0'
 
 function M.check()
     M.start('versions')
@@ -57,6 +58,21 @@ function M.check()
         else
             latex_works = true
             vim.health.ok('using: ' .. vim.inspect(cmds))
+        end
+    end
+
+    local mermaid = config.mermaid
+    if mermaid.enabled then
+        M.start('mermaid')
+        local cmd = mermaid.converter[1]
+        if cmd and vim.fn.executable(cmd) == 1 then
+            vim.health.ok('using: ' .. vim.inspect(mermaid.converter))
+        else
+            local message = 'none installed: ' .. vim.inspect(mermaid.converter)
+            vim.health.warn(message, {
+                'go install github.com/AlexanderGrooff/mermaid-ascii@latest',
+                M.disable('mermaid'),
+            })
         end
     end
 

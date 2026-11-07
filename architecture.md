@@ -70,6 +70,7 @@ These words have one meaning each in the code and in this file.
 | parse     | The expensive step: compute marks from the trees                           | `Updater:parse` in `ui.lua` |
 | display   | The cheap step: show or hide stored extmarks for the cursor position       | `Updater:display`           |
 | component | A per buffer config block such as `heading` or `html`                      | `settings.lua`              |
+| job       | An external process run in the background, its result cached by input      | `lib/job.lua`               |
 
 ## Rules that must hold
 
@@ -121,7 +122,7 @@ marks or generated files that drift.
 | `lua/renderer/render/`      | One renderer per kind of node, grouped by language                |
 | `lua/renderer/format/`      | The format registry and one declaration per format                |
 | `lua/renderer/request/`     | State that lives for one render pass                              |
-| `lua/renderer/lib/`         | Helpers: marks, nodes, lines, display width, entities, config     |
+| `lua/renderer/lib/`         | Helpers: marks, nodes, lines, display width, entities, config, jobs |
 | `lua/renderer/parser/`      | The pipe table parser                                             |
 | `lua/renderer/integ/`       | Completion sources (LSP, blink, cmp, coq)                         |
 | `lua/renderer/debug/`       | Mark inspector, config diff, schema validator                     |
@@ -170,7 +171,7 @@ calls `ui.update(buf, win, event, force)`.
 
 ```text
 Updater:start   skip if buffer or window is gone
-                debounce through the buffer's Decorator
+                debounce through the buffer's Decorator, unless the event is 'Job'
 Updater:run     read the mode
                 render? = config.enabled
                           and the mode is a render mode
@@ -183,6 +184,11 @@ Updater:render  if forced, or the buffer changed, or the visible range is new:
                   parse, then replace the stored marks
                 display
 ```
+
+The debounce runs the first update and drops every other one that arrives
+within `debounce` ms. An update sent when a job finishes (event `'Job'`) is
+not debounced: dropped, the job's output would not be drawn until the next
+event.
 
 There are two separate steps, and the difference matters for performance:
 
@@ -232,7 +238,18 @@ direction of travel, keeping the wanted column. It is called from two places:
 - the `CursorMoved` autocmd in `core/manager.lua`, before the update is
   scheduled. Neovim draws the screen between the autocmd and a scheduled
   callback, so moving the cursor any later shows it on the hidden line for one
-  frame;
+  frame. A mark with `reveal` (see Marks) is a problem here: its rows are
+  hidden until the update reveals it, so this skip would push the cursor out
+  of rows it is meant to reveal. `ui.reveal` runs first, and when a shown mark
+  with `reveal` would be hidden for the new cursor row it runs the display step
+  at once (`Updater:show`, which ends with the skip), otherwise the skip runs
+  on its own. It only gives up when the text changed, not when the view moved
+  past the parsed rows, since marks keep their positions until an edit. It
+  runs on every cursor move, so `Decorator` keeps the marks with `reveal` in
+  their own list and `ui.reveal` returns at once when that list is empty. Known
+  limit: after an edit (an undo, for example) that puts the cursor on a hidden
+  row of a block, the stored rows are stale and the early skip runs, so the
+  cursor can land on another row of the block;
 - the end of `Updater:display`, for marks that are drawn under a cursor that
   did not move: the first render, and a jump into rows that had not been
   parsed.
@@ -303,14 +320,14 @@ custom handler replaces the builtin one unless it sets `extends`.
 Every builtin handler has the same shape: a treesitter query, a table from
 capture name to renderer, and a loop.
 
-| Handler                       | Captures and their renderers                                                               |
-| ----------------------------- | ------------------------------------------------------------------------------------------ |
-| `handler/markdown.lua`        | code, dash, document, footnote, heading, list, paragraph, quote, section, table            |
-| `handler/markdown_inline.lua` | code, highlight, link, shortcut                                                            |
-| `handler/html.lua`            | comment, tag, doctype, entity, raw                                                         |
-| `handler/csv.lua`             | row                                                                                        |
-| `handler/yaml.lua`            | bullet, link                                                                               |
-| `handler/latex.lua`           | no query: collects formula nodes, converts them with an external tool, emits virtual lines |
+| Handler                       | Captures and their renderers                                                                   |
+| ----------------------------- | ---------------------------------------------------------------------------------------------- |
+| `handler/markdown.lua`        | code (then mermaid), dash, document, footnote, heading, list, paragraph, quote, section, table |
+| `handler/markdown_inline.lua` | code, highlight, link, shortcut                                                                |
+| `handler/html.lua`            | comment, tag, doctype, entity, raw                                                             |
+| `handler/csv.lua`             | row                                                                                            |
+| `handler/yaml.lua`            | bullet, link                                                                                   |
+| `handler/latex.lua`           | no query: collects formula nodes, converts them with an external tool, emits virtual lines     |
 
 A renderer extends `render/base.lua` and implements two methods. `setup()`
 reads config and returns false to skip the node. `run()` emits marks.
@@ -412,6 +429,46 @@ comes into view, a width only grows, and any change of the buffer starts it agai
 Measuring the whole file is too slow and measuring only the view makes columns
 jump while scrolling. This is the one place state outlives a parse (rule 4 is about
 the request context), so it is the only module to clear on `BufWipeout`.
+
+### Mermaid renderer
+
+`render/markdown/mermaid.lua` draws a fenced block whose language is `mermaid`
+as its diagram. It is not a capture of its own: `handler/markdown.lua` keeps a
+table of extra renderers per capture, and runs it after `render/markdown/code.lua`
+on every `code` node. The code renderer draws the block as usual, and the
+mermaid renderer adds to it or, in `setup()`, returns false and adds nothing.
+It needs no treesitter parser for mermaid, no format and no handler.
+
+`setup()` sends the text between the fences (`Render.input`, which removes
+the block's indentation from every line but the first) to `mermaid.converter`
+through `lib/job.lua`. On a miss the job starts and the block stays a code
+block. The job's callback runs `ui.update(buf, win, 'Job', true)`, at most once
+per batch of callbacks and only while rendering is still enabled for the
+buffer, and the next parse finds the result in the cache. A failure is cached
+too, logged at `debug` (half typed diagrams fail on every edit), and also leaves
+the code block. Carriage returns are dropped from the output and tabs expanded,
+since virtual text would show them as `^M` and `^I`. The block is
+also left alone when it has no body, sits in a `block_quote` (the quote bar is
+not drawn on virtual lines), `conceallevel` is below 2, or the converter is not
+executable.
+
+On a hit `run()` adds two marks:
+
+- `conceal_lines` over the body and the closing fence;
+- the diagram as `virt_lines` below the opening fence, padded to one width,
+  after the indent line and the fence column.
+
+The opening fence keeps the code renderer's language header and is a real
+line the cursor can rest on, and virtual lines below a visible line are always
+drawn, which is why this is not a replace mark. Both marks set `reveal` to the
+rows from the opening to the closing fence (see Marks), so the cursor on any of
+those rows shows the source, and the cursor walks into the block from either
+side: from above it lands on the fence line, from below on the closing fence
+or, when the code renderer hides the closing fence, `cursor.skip` moves it up
+into the body. Jumps and searches stay on the row they reach, see `ui.reveal`
+under the cursor notes above.
+This follows `anti_conceal` like every mark, unless `mermaid.always_reveal`
+sets `reveal.always`.
 
 ## Formats
 
@@ -524,12 +581,23 @@ A renderer never calls the extmark API. It adds a `renderer.Mark` through the
 ---@field start_col integer
 ---@field opts vim.api.keyset.set_extmark
 ---@field replace? renderer.mark.Line[]  virtual lines standing in for hidden rows
+---@field reveal? renderer.mark.Reveal   rows that reveal the mark, see below
 ```
 
 `conceal` controls anti conceal. `true` means hide the mark near the cursor,
 `false` means always show it, and a string names a kind (`'sign'`,
 `'table_border'`, `'virtual_lines'`) that `anti_conceal.ignore` can keep
 visible.
+
+A mark is revealed when the cursor rows overlap its own rows. `reveal.rows`
+replaces those rows, so that a mark can be revealed from rows it does not
+cover, such as the mermaid diagram attached to the fence line and revealed by
+every row of its block. `Marks:add` takes it as a last argument and
+`Extmark.new` uses the rows as the range `Extmark:overlaps` checks.
+`reveal.always` makes the cursor reveal the mark even when anti-conceal is
+disabled or the mode is in `disabled_modes`: `Updater:display` works out the
+cursor rows twice, `Updater:hidden(false)` for every mark and
+`Updater:hidden(true)`, which ignores those two settings, for these.
 
 `Marks.new(context, update)` takes a flag. When it is true, each mark is also
 recorded in the request context (what it conceals, what inline text it adds).
@@ -642,9 +710,38 @@ Every user facing change also needs a spec (see Tests) and a line under
   can be edited raw. Lines, cursor and events are mirrored across.
 - **Completions.** `integ/` offers callout and checkbox completions through
   an in process LSP server or a completion plugin.
-- **External tools.** Only LaTeX uses one. `handler/latex.lua` starts the
-  converter for each formula with `vim.system` and waits for it to exit
-  inside the render pass, with results cached by formula text.
+- **External tools.** `lib/job.lua` runs them for mermaid, see below.
+  LaTeX does not use it yet: `handler/latex.lua` starts the converter for
+  each formula with `vim.system` and waits for it to exit inside the render
+  pass, with results cached by formula text.
+- **Jobs.** `job.run(request, callback)` returns the cached result of a
+  request, or starts the process and returns nil, never waiting for it. The
+  callback runs once on the main loop when the process exits.
+
+  ```lua
+  ---@class renderer.job.Request
+  ---@field cmd string[]
+  ---@field stdin? string
+  ---@field timeout? integer     ms, default 5000
+  ---@field key? string          extra text mixed into the cache key
+
+  ---@class renderer.job.Result
+  ---@field ok boolean
+  ---@field stdout string
+  ---@field stderr string
+  ```
+
+  The cache key is a hash of `cmd`, `stdin` and `key`. A request already in
+  flight for the same key is joined, not restarted. Failures are cached as
+  well, otherwise a broken input would start a process on every render; they
+  clear when the input changes, since the key changes with it. At most
+  `job.limit` (4) processes run at once and the rest queue. A timeout, a non
+  zero exit, or `vim.system` throwing are all failures. A timeout (exit code
+  124 with a signal) is cached for `job.retry` (30 s) only, so a run that was
+  slow under load is tried again; not at once, because the refresh after the
+  failure would start it again forever. The cache lives in memory for the
+  session; `job.clear()` empties it and `job.reset()` also drops queued and
+  running jobs, whose callbacks are then never called, for specs.
 - **Logging.** `core/log.lua` writes to a file under `stdpath('state')` at the
   configured level.
 - **Debug.** `:Renderer debug` lists the marks on the cursor row,
@@ -656,6 +753,12 @@ Specs are plenary busted files under `tests/`, with unit specs for single
 modules under `tests/unit/`. `tests/minimal_init.lua` loads the dependencies,
 installs the parsers, and starts the treesitter highlighter for `markdown`,
 `html`, `csv`, `tsv` and `psv` buffers. `benches/` holds timing specs for larger files.
+
+`tests/helpers/system.lua` stubs `vim.system` for converters. A call with an
+exit callback, as `lib/job.lua` makes, finishes on the main loop, can be held
+back until `release()`, and fails for an output given as `false`. Mermaid specs
+wait for the second render with a few short `vim.wait` calls.
+`tests/unit/job_spec.lua` uses real commands (`cat`, `sh`, `sleep`) instead.
 
 A render spec sets up a scratch buffer and asserts two things: the exact list
 of marks, and the text on screen.
@@ -694,7 +797,7 @@ remain, and each is addressed by a planned change in part 2.
 | ---------------------------------- | ------------------------------------------------------- | ------------------------------------------------- |
 | `core/ui.lua` `Updater:parse`      | the buffer has a treesitter parser                      | binary files cannot enter the pipeline            |
 | `core/manager.lua` `should_attach` | the buffer text is the file on disk, for the size check | a large PDF is refused although its text is small |
-| `handler/latex.lua`                | external tools are waited on inside the render pass     | unusable for anything slower than a formula       |
+| `handler/latex.lua`                | waits for its converter inside the render pass          | slow formulas block rendering, unlike mermaid     |
 | `tests/util.lua`, `minimal_init`   | highlighter started for markdown, html and csv only     | a spec for another filetype needs `minimal_init`  |
 
 ---
@@ -705,13 +808,13 @@ Nothing in this part exists in the code. Do not require these modules or rely
 on these fields. When one of them is built, follow the design here and move
 its section into part 1.
 
-The goal is to render more than markdown: CSV, diagrams inside markdown, and
-documents that are not text (DOCX, PDF). The format registry and plain HTML
-files, described in part 1, are done. Two components remain:
+The goal is to render more than markdown: data files, diagrams inside
+markdown, and documents that are not text (DOCX, PDF). The format registry,
+plain HTML files, CSV files, mermaid diagrams and the job runner, described in
+part 1, are done. One component remains:
 
 | Component     | Module                          | Built together with its first user |
 | ------------- | ------------------------------- | ---------------------------------- |
-| Job runner    | `lua/renderer/lib/job.lua`      | mermaid diagrams                   |
 | Convert layer | `lua/renderer/convert/init.lua` | DOCX files                         |
 
 ## Principles
@@ -738,7 +841,8 @@ Used for DOCX, PDF, the HTML reader view, and later ODT, EPUB, notebooks.
 
 A third case sits inside a document rather than being one: **converted
 blocks**. A node's text is sent to a tool and the output is shown in its place.
-LaTeX formulas work this way now, mermaid diagrams will.
+LaTeX formulas work this way, waiting for their tool, and mermaid diagrams
+through the job runner.
 
 ## Additions to the format registry
 
@@ -760,52 +864,17 @@ add to it:
 
 - **`health.lua` reports converters** from the registry, as it does parsers.
 
-## Job runner
+## Job runner: what is left
 
-`lua/renderer/lib/job.lua`. The only place that starts a process.
+The runner is in place and described in part 1. Two of its planned consumers
+remain:
 
-```lua
----@class renderer.job.Request
----@field cmd string[]
----@field stdin? string
----@field timeout? integer
----@field key? string            extra text mixed into the cache key
----@field disk? boolean          also cache under stdpath('cache')/renderer/
-
----@class renderer.job.Result
----@field ok boolean
----@field stdout string
----@field stderr string
-
----Returns the cached result when there is one, otherwise starts the job and
----returns nil. The callback runs once, on the main loop.
----@param request renderer.job.Request
----@param callback fun(result: renderer.job.Result)
----@return renderer.job.Result?
-function M.run(request, callback) end
-```
-
-How a handler uses it during a render:
-
-```text
-render pass 1:  job.run(...) -> nil      emit nothing special, node renders raw
-                  ... tool finishes ...
-                callback: ui.update(buf, win, 'Job', true)
-render pass 2:  job.run(...) -> result   emit marks from result.stdout
-```
-
-- Cache key is a hash of `cmd`, `stdin` and `key`. For file conversion `key`
-  carries path, mtime and size.
-- A request already in flight for the same key is joined, not restarted.
-- Failures are cached, otherwise a broken input would start a process on every
-  render. They clear when the input changes, since the key changes with it.
-- A cap on concurrent processes, so a document with fifty diagrams does not
-  start fifty at once.
-- `ui.update` already checks the buffer and window are still valid, so a
-  callback arriving after the buffer closed is harmless.
-
-Consumers, in the order they arrive: mermaid, the convert layer, then LaTeX,
-which can drop its blocking wait and its dead `vim.fn.system` branch.
+- **The convert layer** adds `disk?: boolean` to `renderer.job.Request`, to
+  also cache a result under `stdpath('cache')/renderer/`, and passes path,
+  mtime and size as `key`.
+- **LaTeX** moves onto it, which drops its blocking wait and its dead
+  `vim.fn.system` branch. A formula then renders raw until its output is
+  ready, as a mermaid block does.
 
 ## Convert layer
 
@@ -851,32 +920,31 @@ pandoc, `.docx` keeps opening in the zip browser as it does today.
 
 ## Converted blocks
 
-A pattern on top of the job runner, not a module of its own. A renderer that owns a
-node sends its text through `job.run`:
+A pattern on top of the job runner, not a module of its own. A renderer that
+owns a node sends its text through `job.run`:
 
-- hit: replace the node's lines with the output as virtual lines, using the
-  replace mark described in part 1, so the source returns when the cursor
-  enters the block;
+- hit: show the output in place of the node;
 - miss: render the node as it would render without this feature;
 - failure: same as miss, with the stderr logged.
 
-Mermaid is the first user. Its renderer returns false from `setup()` on a miss
-or a failure, and the markdown handler falls back to the code block renderer.
-With `vim.ui.img` the same pattern produces an image instead of text, and only
-the converter and the mark change.
+Mermaid is the first user (part 1). It shows its output as virtual lines below
+the fence line and hides the rest of the block, rather than with a replace mark,
+so that the cursor can enter the block to edit it. With `vim.ui.img` the same
+pattern produces an image instead of text, and only the converter and the mark
+change.
 
 ## Module map after the planned work
 
 ```text
 lua/renderer/
-  format/            ADD   mermaid.lua, docx.lua, pdf.lua
-  lib/job.lua        NEW   external tool runner
+  format/            ADD   docx.lua, pdf.lua
+  lib/job.lua        CHG   disk cache for converted files
   convert/init.lua   NEW   BufReadCmd, buffer contract, text decoration
   core/reader.lua    NEW   HTML reader view
   core/manager.lua   CHG   size check for converted buffers
   health.lua         CHG   converters from registry
-  handler/, render/  ADD   mermaid handler
-  settings.lua       ADD   csv, mermaid, convert, reader blocks
+  handler/latex.lua  CHG   formulas through lib/job.lua
+  settings.lua       ADD   convert, reader blocks
 ```
 
 `init.lua` keeps its literal `default` table, because `scripts/update.py`
@@ -884,7 +952,7 @@ parses it.
 
 ## Recipes once the planned work exists
 
-**In place format** (CSV as the example):
+**In place format** (CSV is built this way):
 
 1. `format/csv.lua`, and its name in the list in `format/init.lua`.
 2. `handler/csv.lua`: a query and a capture to renderer map.
@@ -901,7 +969,8 @@ parses it.
 config entry.
 
 **Converted block**: a config block with a `converter` list, and a call to
-`job.run` in the renderer that owns the node.
+`job.run` in the renderer that owns the node, as `render/markdown/mermaid.lua`
+does.
 
 None of the recipes edits `core/` or `health.lua`, and `lib/config.lua` only
 gains a name in `Config.components`. If one ever has to do more, the registry
@@ -912,9 +981,9 @@ is missing a field and the fix belongs there.
 - Format specs use `tests/util.lua` `setup.text` with a filetype, and live in
   their own files that leave the markdown specs alone. `minimal_init` starts
   the highlighter for each new format's filetype.
-- `lib/job.lua` and `convert/` are tested with trivial commands that print a
-  fixture, so cache, sharing, failure, timeout and the `:w` guard are covered
-  with no external tool installed.
+- `convert/` is tested with trivial commands that print a fixture, as
+  `tests/unit/job_spec.lua` is, so the `:w` guard is covered with no external
+  tool installed.
 - One real fixture spec per converter, skipped when the tool is absent. CI
   installs `pandoc` and `poppler-utils`.
 
@@ -942,8 +1011,4 @@ is missing a field and the fix belongs there.
   keep servers from attaching, to be confirmed with the convert layer.
 - lazy.nvim replaying `BufReadCmd` after loading the plugin on a pattern
   event.
-- Whether the cursor should be able to enter a block whose lines are hidden by
-  a replace mark spanning several rows. Today `cursor.skip` steps over it
-  (part 1), which suits a table but may not suit a diagram whose source the
-  user wants to edit.
 - `vim.ui.img` function signatures.

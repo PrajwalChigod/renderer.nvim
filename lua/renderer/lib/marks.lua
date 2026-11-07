@@ -7,6 +7,11 @@ local log = require('renderer.core.log')
 ---@field start_col integer
 ---@field opts renderer.mark.Opts
 ---@field replace? renderer.mark.Line[]
+---@field reveal? renderer.mark.Reveal
+
+---@class (exact) renderer.mark.Reveal
+---@field rows renderer.Range rows that reveal the mark, instead of its own
+---@field always boolean reveal even when anti conceal is disabled
 
 ---@alias renderer.mark.Conceal boolean|renderer.Element
 
@@ -94,13 +99,15 @@ end
 ---@param start_row integer
 ---@param start_col integer
 ---@param opts renderer.mark.Opts
+---@param reveal? renderer.mark.Reveal
 ---@return boolean
-function Marks:add(config, conceal, start_row, start_col, opts)
+function Marks:add(config, conceal, start_row, start_col, opts, reveal)
     return self:insert(config, {
         conceal = conceal,
         start_row = start_row,
         start_col = start_col,
         opts = opts,
+        reveal = reveal,
     })
 end
 
