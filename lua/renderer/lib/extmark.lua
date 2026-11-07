@@ -19,13 +19,18 @@ function Extmark.new(mark)
     if mark.opts.hl_eol then
         bottom = bottom - 1
     end
-    self.range = { top, bottom }
+    self.range = mark.reveal and mark.reveal.rows or { top, bottom }
     return self
 end
 
 ---@return renderer.Mark
 function Extmark:get()
     return self.mark
+end
+
+---@return boolean
+function Extmark:shown()
+    return self.id ~= nil
 end
 
 ---@param range? renderer.Range

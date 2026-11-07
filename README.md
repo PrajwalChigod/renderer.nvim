@@ -45,10 +45,12 @@ Improve viewing Markdown in Neovim
   - Tables: border, color, alignment indicator, auto align cells
   - Links: icon, color, user defined destinations
   - Latex blocks [^2]: renders formulas
+  - Mermaid diagrams [^3]: drawn in place of the code block
   - Org indent mode: per level padding
 
 [^1]: Requires icon provider, `mini.icons` or `nvim-web-devicons`
 [^2]: Requires `latex` parser and `pylatexenc`
+[^3]: Requires `mermaid-ascii`
 
 # Requirements
 
@@ -73,6 +75,8 @@ Improve viewing Markdown in Neovim
     Used to transform `latex` strings to appropriate unicode using `utftex`
   - [pylatexenc](https://pypi.org/project/pylatexenc/) (Optional):
     Used to transform `latex` strings to appropriate unicode using `latex2text`
+  - [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii) (Optional):
+    Used to draw `mermaid` code blocks as diagrams
 
 # Install
 
@@ -901,6 +905,23 @@ require('renderer').setup({
             youtube = { icon = '󰗃 ', pattern = 'youtube[^.]*%.com', kind = 'url' },
             youtube_short = { icon = '󰗃 ', pattern = 'youtu%.be', kind = 'url' },
         },
+    },
+    mermaid = {
+        -- Turn on / off mermaid diagram rendering, a block whose diagram is not ready or cannot
+        -- be drawn stays a code block.
+        enabled = true,
+        -- Additional modes to render mermaid diagrams.
+        render_modes = false,
+        -- Command that reads a diagram on stdin and prints it as text, the first entry is the
+        -- executable and the rest are its arguments.
+        converter = { 'mermaid-ascii' },
+        -- Milliseconds to wait for the converter before giving up on a diagram.
+        timeout = 5000,
+        -- Show the source when the cursor is on the block even when `anti_conceal` is disabled,
+        -- so that diagrams can be edited in place. With `anti_conceal` enabled this always happens.
+        always_reveal = false,
+        -- Highlight for the diagram.
+        highlight = 'RendererMermaid',
     },
     sign = {
         -- Turn on / off sign rendering.
@@ -1868,6 +1889,7 @@ The table below shows all the highlight groups with their default link
 | RendererDash            | LineNr                             | Thematic break line        |
 | RendererSign            | SignColumn                         | Sign column background     |
 | RendererMath            | @markup.math                       | Latex lines                |
+| RendererMermaid         | RendererCode                       | Mermaid diagram            |
 | RendererIndent          | Whitespace                         | Indent icon                |
 | RendererHtmlComment     | @comment                           | HTML comment inline text   |
 | RendererHtmlBold        | @markup.strong                     | HTML bold tags             |
@@ -1993,6 +2015,31 @@ options set the `header`, the highlights and the widths:
   again on the cursor line
 
 See [Limitations](doc/limitations.md) for what is not rendered.
+
+## Mermaid Diagrams
+
+A code block whose language is `mermaid` is drawn as its diagram, using
+[mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii) by default:
+
+```sh
+go install github.com/AlexanderGrooff/mermaid-ascii@latest
+```
+
+The tool runs in the background, so a block stays a code block until its diagram
+is ready, then the buffer is drawn again. A diagram the tool cannot draw stays a
+code block too, and the error is written to the log at the `debug` level (set
+`log_level = 'debug'` to see it). Each diagram is converted once, and again only
+when its text changes, or 30 seconds after the tool timed out.
+
+The opening fence line stays, with the language as usual, and the diagram takes
+the place of the code below it. Moving the cursor onto any line of the block,
+the fence included, shows the source so it can be edited. This follows
+`anti_conceal`: with it disabled the diagram stays drawn, unless
+`mermaid.always_reveal` is set, which reveals mermaid blocks on their own. Any command that reads a diagram on stdin and prints text
+can be set as `mermaid.converter`.
+
+A block inside a block quote is left as a code block, since the quote marker is
+not drawn next to the diagram.
 
 ## Images
 

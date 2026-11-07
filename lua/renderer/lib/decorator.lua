@@ -6,6 +6,7 @@ local replacements = require('renderer.lib.replacements')
 ---@field private timer uv.uv_timer_t
 ---@field private running boolean
 ---@field private marks renderer.Extmark[]
+---@field private reveals renderer.Extmark[]
 ---@field private generated renderer.Extmark[]
 ---@field private tick integer?
 ---@field n integer
@@ -20,6 +21,7 @@ function Decorator.new(buf)
     self.timer = assert(vim.uv.new_timer())
     self.running = false
     self.marks = {}
+    self.reveals = {}
     self.generated = {}
     self.tick = nil
     self.n = 0
@@ -44,9 +46,18 @@ function Decorator:get()
     return result
 end
 
+---Marks revealed by rows they do not cover, see renderer.mark.Reveal
+---@return renderer.Extmark[]
+function Decorator:revealed()
+    return self.reveals
+end
+
 ---@param marks renderer.Extmark[]
 function Decorator:set(marks)
     self.marks = marks
+    self.reveals = vim.tbl_filter(function(extmark)
+        return extmark:get().reveal ~= nil
+    end, marks)
     self.tick = self:get_tick()
     self.n = self.n + 1
 end

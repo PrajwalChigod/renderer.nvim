@@ -1557,6 +1557,44 @@ function M.link.schema()
     })
 end
 
+---@class renderer.mermaid.Settings
+M.mermaid = {}
+
+---@class (exact) renderer.mermaid.Config: renderer.base.Config
+---@field converter string[]
+---@field timeout integer
+---@field always_reveal boolean
+---@field highlight string
+
+---@type renderer.mermaid.Config
+M.mermaid.default = {
+    -- Turn on / off mermaid diagram rendering, a block whose diagram is not ready or cannot
+    -- be drawn stays a code block.
+    enabled = true,
+    -- Additional modes to render mermaid diagrams.
+    render_modes = false,
+    -- Command that reads a diagram on stdin and prints it as text, the first entry is the
+    -- executable and the rest are its arguments.
+    converter = { 'mermaid-ascii' },
+    -- Milliseconds to wait for the converter before giving up on a diagram.
+    timeout = 5000,
+    -- Show the source when the cursor is on the block even when `anti_conceal` is disabled,
+    -- so that diagrams can be edited in place. With `anti_conceal` enabled this always happens.
+    always_reveal = false,
+    -- Highlight for the diagram.
+    highlight = 'RendererMermaid',
+}
+
+---@return renderer.Schema
+function M.mermaid.schema()
+    return M.base.schema({
+        converter = { list = { type = 'string' } },
+        timeout = { type = 'number' },
+        always_reveal = { type = 'boolean' },
+        highlight = { type = 'string' },
+    })
+end
+
 ---@class renderer.on.Settings
 M.on = {}
 

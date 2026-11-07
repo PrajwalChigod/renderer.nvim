@@ -23,6 +23,7 @@ local M = {}
 ---@field inline_highlight renderer.inline.highlight.Config
 ---@field latex renderer.latex.Config
 ---@field link renderer.link.Config
+---@field mermaid renderer.mermaid.Config
 ---@field padding renderer.padding.Config
 ---@field paragraph renderer.paragraph.Config
 ---@field pipe_table renderer.table.Config
@@ -112,6 +113,7 @@ M.default = {
     pipe_table = settings.pipe_table.default,
     callout = settings.callout.default,
     link = settings.link.default,
+    mermaid = settings.mermaid.default,
     sign = settings.sign.default,
     inline_highlight = settings.inline_highlight.default,
     indent = settings.indent.default,

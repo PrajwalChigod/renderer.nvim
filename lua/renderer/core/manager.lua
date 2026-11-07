@@ -145,7 +145,12 @@ end
 ---@param buf integer
 ---@param win integer
 function M.skip_hidden(buf, win)
-    if state.get(buf).anti_conceal.skip_hidden then
+    if not state.get(buf).anti_conceal.skip_hidden then
+        return
+    end
+    -- rows the cursor reveals are hidden until the update, which is too late
+    -- to keep the cursor on them, revealing them now also skips as below
+    if not ui.reveal(buf, win) then
         cursor.skip(buf, win, env.mode.get())
     end
 end

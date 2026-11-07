@@ -961,6 +961,23 @@ Default Configuration ~
                 youtube_short = { icon = '󰗃 ', pattern = 'youtu%.be', kind = 'url' },
             },
         },
+        mermaid = {
+            -- Turn on / off mermaid diagram rendering, a block whose diagram is not ready or cannot
+            -- be drawn stays a code block.
+            enabled = true,
+            -- Additional modes to render mermaid diagrams.
+            render_modes = false,
+            -- Command that reads a diagram on stdin and prints it as text, the first entry is the
+            -- executable and the rest are its arguments.
+            converter = { 'mermaid-ascii' },
+            -- Milliseconds to wait for the converter before giving up on a diagram.
+            timeout = 5000,
+            -- Show the source when the cursor is on the block even when `anti_conceal` is disabled,
+            -- so that diagrams can be edited in place. With `anti_conceal` enabled this always happens.
+            always_reveal = false,
+            -- Highlight for the diagram.
+            highlight = 'RendererMermaid',
+        },
         sign = {
             -- Turn on / off sign rendering.
             enabled = true,

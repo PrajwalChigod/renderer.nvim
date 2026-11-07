@@ -20,6 +20,7 @@
 ---@field inline_highlight? renderer.inline.highlight.UserConfig
 ---@field latex? renderer.latex.UserConfig
 ---@field link? renderer.link.UserConfig
+---@field mermaid? renderer.mermaid.UserConfig
 ---@field padding? renderer.padding.UserConfig
 ---@field paragraph? renderer.paragraph.UserConfig
 ---@field pipe_table? renderer.table.UserConfig
@@ -268,6 +269,12 @@
 ---@field pattern? string
 ---@field kind? renderer.link.custom.Kind
 ---@field priority? integer
+---@field highlight? string
+
+---@class (exact) renderer.mermaid.UserConfig: renderer.base.UserConfig
+---@field converter? string[]
+---@field timeout? integer
+---@field always_reveal? boolean
 ---@field highlight? string
 
 ---@class (exact) renderer.on.UserConfig
