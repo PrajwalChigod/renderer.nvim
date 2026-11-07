@@ -16,7 +16,7 @@ local state = require('renderer.state')
 local M = {}
 
 ---@private
-M.version = '0.2.1'
+M.version = '0.3.0'
 
 function M.check()
     M.start('versions')

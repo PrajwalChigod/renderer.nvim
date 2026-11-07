@@ -2,6 +2,8 @@
 
 ## Pre-release
 
+## 0.3.0 (2026-11-07)
+
 ### Features
 
 - render CSV, TSV and PSV files as aligned tables when `csv`, `tsv` or `psv`
