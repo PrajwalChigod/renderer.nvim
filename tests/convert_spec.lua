@@ -182,11 +182,11 @@ describe('convert', function()
     it('refuses to write converted text over a docx', function()
         -- run in a child neovim: a typed command runs outside any Lua pcall,
         -- where an error that a spec would see as one does not stop a write
-        local dir = vim.fs.dirname(fixture({ 'source' }))
-        local path = vim.fs.joinpath(dir, 'file.docx')
+        local temp = vim.fs.dirname(fixture({ 'source' }))
+        local path = vim.fs.joinpath(temp, 'file.docx')
         local before = vim.fn.readfile(path, 'b')
-        local copy = vim.fs.joinpath(dir, 'copy.md')
-        local other = vim.fs.joinpath(dir, 'other.md')
+        local copy = vim.fs.joinpath(temp, 'copy.md')
+        local other = vim.fs.joinpath(temp, 'other.md')
         local opts = vim.inspect(config({ cmd = { 'echo', 'converted' } }))
         local result = vim.system({
             vim.v.progpath,
@@ -212,7 +212,7 @@ describe('convert', function()
             '-c',
             'qa!',
             path,
-        }, { env = { XDG_CACHE_HOME = dir } }):wait(10000)
+        }, { env = { XDG_CACHE_HOME = temp } }):wait(10000)
         assert.same(0, result.code, result.stderr)
         assert.same(before, vim.fn.readfile(path, 'b'))
         -- other files still take the converted text
