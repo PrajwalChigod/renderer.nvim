@@ -199,6 +199,30 @@ the cursor steps over the table. This is the case when:
 - the first line of a row is wider than the window and `wrap` is on, as a line
   that wraps takes more than one line on screen even when its text is hidden
 
+## `docx` Files Show Only What The Converter Keeps
+
+A `docx` file is shown as the markdown `pandoc` makes of it, so anything markdown
+cannot hold is lost: page layout, headers and footers, fonts and colors. Images
+appear as links to files inside the document, which do not exist on disk. Code
+blocks carry no language in a `docx` file, so they come back as indented code.
+
+## `docx` Files Need The Plugin Loaded Before They Open
+
+A `.docx` file is read through a `BufReadCmd` autocmd, which has to exist before
+the file is opened. Lazy loading on `ft` alone does not work, since a `.docx` file
+has no filetype until it is converted. Changing `file_types` with a later call to
+`setup` does not give `.docx` files back to the zip plugin until Neovim restarts.
+
+## `docx` Files Are Not Reloaded On Their Own
+
+`autoread` and `:checktime` do not notice when an open `.docx` file changes, since
+the buffer holds converted text rather than the file. Run `:e` to convert it again.
+
+## The `docx` Cache Is Not Cleaned
+
+Every version of every `.docx` file opened is kept under
+`stdpath('cache')/renderer/`. Delete the folder to reclaim the space.
+
 # Resolved Limitations
 
 ## Telescope Opening File

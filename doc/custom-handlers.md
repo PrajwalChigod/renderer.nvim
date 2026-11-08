@@ -28,6 +28,7 @@ Each handler must conform to the following interface:
 ---@field start_col integer
 ---@field opts renderer.mark.Opts
 ---@field replace? renderer.mark.Line[]
+---@field reveal? renderer.mark.Reveal
 
 ---@alias renderer.mark.Conceal boolean|renderer.Element
 
