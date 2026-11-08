@@ -83,6 +83,7 @@ function M.overrides(user)
         buflisted = partials((user.overrides or {}).buflisted),
         buftype = partials((user.overrides or {}).buftype),
         filetype = partials((user.overrides or {}).filetype),
+        convert = M.partial((user.overrides or {}).convert),
         preview = M.partial((user.overrides or {}).preview),
     }
 

@@ -5,6 +5,7 @@ local log = require('renderer.core.log')
 ---@field stdin? string
 ---@field timeout? integer milliseconds, defaults to 5000
 ---@field key? string extra text mixed into the cache key
+---@field disk? boolean also keep a successful result on disk, across sessions
 
 ---@class (exact) renderer.job.Result
 ---@field ok boolean
@@ -28,6 +29,10 @@ M.limit = 4
 ---at once, because the refresh after a failure would start it again forever
 ---@type integer
 M.retry = 30000
+
+---Where results of requests with `disk` are kept, one file per key
+---@type string
+M.dir = vim.fs.joinpath(vim.fn.stdpath('cache'), 'renderer')
 
 ---@private
 ---@type table<string, renderer.job.Result>
@@ -69,8 +74,9 @@ function M.run(request, callback)
         M.cache[key] = nil
         M.expires[key] = nil
     end
-    local result = M.cache[key]
+    local result = M.cache[key] or (request.disk and M.load(key))
     if result then
+        M.cache[key] = result
         return result
     end
     local waiting = M.waiting[key]
@@ -124,11 +130,55 @@ end
 
 ---@private
 ---@param key string
+---@return renderer.job.Result?
+function M.load(key)
+    local file = io.open(vim.fs.joinpath(M.dir, key), 'rb')
+    if not file then
+        return nil
+    end
+    local stdout = file:read('*a')
+    file:close()
+    return { ok = true, stdout = stdout, stderr = '' }
+end
+
+---Failures are not saved, they are kept in memory only like any other. The
+---text is often a private document, so only the user can read it
+---@private
+---@param key string
+---@param result renderer.job.Result
+function M.save(key, result)
+    if not result.ok then
+        return
+    end
+    local path = vim.fs.joinpath(M.dir, key)
+    -- write then rename, so another neovim never reads half a file
+    local temp = path .. '.' .. vim.uv.os_getpid()
+    local ok, err = pcall(function()
+        vim.fn.mkdir(M.dir, 'p', tonumber('700', 8))
+        local fd = assert(vim.uv.fs_open(temp, 'w', tonumber('600', 8)))
+        local written, write_err = vim.uv.fs_write(fd, result.stdout)
+        local closed, close_err = vim.uv.fs_close(fd)
+        -- a full disk writes part of the text, which must not be kept
+        assert(written == #result.stdout, write_err or 'short write')
+        assert(closed, close_err)
+        assert(vim.uv.fs_rename(temp, path))
+    end)
+    if not ok then
+        os.remove(temp)
+        log.add('error', 'JobSave', err)
+    end
+end
+
+---@private
+---@param key string
 ---@param request renderer.job.Request
 function M.start(key, request)
     local generation = M.generation
     local function finish(result, timeout)
         if generation == M.generation then
+            if request.disk then
+                M.save(key, result)
+            end
             M.finish(key, result, timeout)
         end
     end

@@ -41,6 +41,7 @@
 ---@field restart_highlighter? boolean
 ---@field injections? renderer.injection.UserConfigs
 ---@field patterns? renderer.pattern.UserConfigs
+---@field convert? renderer.convert.UserConfig
 ---@field on? renderer.on.UserConfig
 ---@field completions? renderer.completions.UserConfig
 ---@field custom_handlers? table<string, renderer.Handler>
@@ -146,6 +147,17 @@
 ---@class (exact) renderer.completion.filter.UserConfig
 ---@field callout? fun(value: renderer.callout.UserConfig): boolean
 ---@field checkbox? fun(value: renderer.checkbox.custom.UserConfig): boolean
+
+---@class (exact) renderer.convert.UserConfig
+---@field docx? renderer.convert.format.UserConfig
+
+---@class (exact) renderer.convert.format.UserConfig
+---@field converters? renderer.converter.UserConfig[]
+---@field timeout? integer
+
+---@class (exact) renderer.converter.UserConfig
+---@field cmd? string[]
+---@field output? renderer.converter.Output
 
 ---@class (exact) renderer.csv.UserConfig: renderer.base.UserConfig
 ---@field header? boolean
@@ -287,6 +299,7 @@
 ---@field buflisted? table<boolean, renderer.partial.UserConfig>
 ---@field buftype? table<string, renderer.partial.UserConfig>
 ---@field filetype? table<string, renderer.partial.UserConfig>
+---@field convert? renderer.partial.UserConfig
 ---@field preview? renderer.partial.UserConfig
 
 ---@class (exact) renderer.padding.UserConfig

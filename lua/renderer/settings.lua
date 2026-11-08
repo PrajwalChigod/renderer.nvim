@@ -656,6 +656,67 @@ function M.completions.schema()
     }
 end
 
+---@class renderer.convert.Settings
+M.convert = {}
+
+---@class (exact) renderer.convert.Config
+---@field docx renderer.convert.format.Config
+
+---@class (exact) renderer.convert.format.Config
+---@field converters renderer.converter.Config[]
+---@field timeout integer
+
+---@class (exact) renderer.converter.Config
+---@field cmd string[]
+---@field output renderer.converter.Output
+
+---@enum renderer.converter.Output
+M.convert.output = {
+    markdown = 'markdown',
+    text = 'text',
+}
+
+---@type renderer.convert.Config
+M.convert.default = {
+    -- Files that are not text, opened as a read only copy converted by an external tool. Only
+    -- used for the formats listed in `file_types`, the file itself is never written.
+
+    docx = {
+        -- Commands tried in order, the first one whose executable is installed is used. `{file}`
+        -- is replaced with the path of the file, and the command prints the converted text.
+        -- | markdown | rendered like any markdown buffer |
+        -- | text     | shown as plain text               |
+        converters = {
+            {
+                cmd = { 'pandoc', '--from=docx', '--to=gfm', '{file}' },
+                output = 'markdown',
+            },
+        },
+        -- Milliseconds to wait for the converter before giving up on a file.
+        timeout = 30000,
+    },
+}
+
+---@return renderer.Schema
+function M.convert.schema()
+    ---@type renderer.Schema
+    local converter = {
+        record = {
+            cmd = { list = { type = 'string' } },
+            output = { enum = M.convert.output },
+        },
+    }
+    ---@type renderer.Schema
+    local format = {
+        record = {
+            converters = { list = converter },
+            timeout = { type = 'number' },
+        },
+    }
+    ---@type renderer.Schema
+    return { record = { docx = format } }
+end
+
 ---@class renderer.csv.Settings
 M.csv = {}
 
@@ -1643,6 +1704,7 @@ M.overrides = {}
 ---@field buflisted table<boolean, renderer.partial.UserConfig>
 ---@field buftype table<string, renderer.partial.UserConfig>
 ---@field filetype table<string, renderer.partial.UserConfig>
+---@field convert renderer.partial.UserConfig
 ---@field preview renderer.partial.UserConfig
 
 ---@type renderer.overrides.Config
@@ -1665,6 +1727,11 @@ M.overrides.default = {
     },
     -- Override for different filetype values, @see :h 'filetype'.
     filetype = {},
+    -- Override for files opened through `convert`, read only so nothing is revealed for editing.
+    convert = {
+        render_modes = true,
+        anti_conceal = { enabled = false },
+    },
     -- Override for preview buffer.
     preview = {
         render_modes = true,
@@ -1680,6 +1747,7 @@ function M.overrides.schema()
             buflisted = { map = { { type = 'boolean' }, Config.schema({}) } },
             buftype = { map = { { type = 'string' }, Config.schema({}) } },
             filetype = { map = { { type = 'string' }, Config.schema({}) } },
+            convert = Config.schema({}),
             preview = Config.schema({}),
         },
     }
