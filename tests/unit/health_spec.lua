@@ -32,6 +32,14 @@ describe('health', function()
         validate({ 'html', 'markdown' }, required, optional)
     end)
 
+    it('docx', function()
+        validate(
+            { 'docx' },
+            { 'markdown', 'markdown_inline' },
+            { 'html', 'latex' }
+        )
+    end)
+
     it('no format', function()
         validate({ 'text' }, {}, {})
     end)

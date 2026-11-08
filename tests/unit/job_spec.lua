@@ -130,4 +130,69 @@ describe('lib.job', function()
         assert.is_true(first.ok and second.ok)
         assert.is_false(vim.deep_equal(first.stdout, second.stdout))
     end)
+
+    describe('disk', function()
+        local dir = job.dir
+
+        before_each(function()
+            job.dir = vim.fn.tempname()
+        end)
+
+        after_each(function()
+            vim.fn.delete(job.dir, 'rf')
+            job.dir = dir
+        end)
+
+        it('keeps a result across sessions', function()
+            local request = { cmd = { 'sh', '-c', 'echo $$' }, disk = true }
+            local result = wait(request)
+            assert.same(1, #vim.fn.readdir(job.dir))
+
+            -- a new session starts with an empty memory cache
+            job.reset()
+            local system = spy.on(vim, 'system')
+            assert.same(result, job.run(request, function() end))
+            system:revert()
+            assert.same(0, #system.calls)
+        end)
+
+        it('does not keep a failure', function()
+            local request = { cmd = { 'sh', '-c', 'exit 1' }, disk = true }
+            assert.is_false(wait(request).ok)
+            assert.same(0, vim.fn.isdirectory(job.dir))
+        end)
+
+        it('keeps the text private to the user', function()
+            wait({ cmd = { 'echo', 'secret' }, disk = true })
+            local file = vim.fs.joinpath(job.dir, vim.fn.readdir(job.dir)[1])
+            local function mode(path)
+                return assert(vim.uv.fs_stat(path)).mode % 512
+            end
+            assert.same(tonumber('700', 8), mode(job.dir))
+            assert.same(tonumber('600', 8), mode(file))
+        end)
+
+        it('does not keep a partial write', function()
+            -- a full disk writes only part of the text
+            local fs_write = vim.uv.fs_write
+            vim.uv.fs_write = function(fd)
+                return fs_write(fd, 'par')
+            end
+            local request = { cmd = { 'echo', 'partial' }, disk = true }
+            local ok, result = pcall(wait, request)
+            vim.uv.fs_write = fs_write
+            assert.is_true(ok)
+            assert.same('partial\n', result.stdout)
+            -- neither the result nor the temporary file is left behind
+            assert.same({}, vim.fn.readdir(job.dir))
+        end)
+
+        it('is not used without disk', function()
+            local request = { cmd = { 'sh', '-c', 'echo $$' } }
+            local first = wait(request)
+            assert.same(0, vim.fn.isdirectory(job.dir))
+            job.reset()
+            assert.is_false(vim.deep_equal(first, wait(request)))
+        end)
+    end)
 end)
