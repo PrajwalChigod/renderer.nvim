@@ -2,6 +2,17 @@
 
 ## Pre-release
 
+### Features
+
+- open `docx` files as rendered markdown when `docx` is added to `file_types` and
+  `pandoc` is installed: the file is converted in the background into a read only
+  buffer that keeps its path and cannot be written back: `:w` fails, writing the
+  converted text to a `.docx` file is refused, and the file is never changed. The
+  result is cached on disk, readable by your user only, until the file changes, a
+  failed conversion shows the command and its error, and `:checkhealth` reports
+  the converter. Pick the tool with `convert.docx.converters`, converted buffers
+  get `overrides.convert`, which disables `anti_conceal`
+
 ## 0.4.0 (2026-11-07)
 
 ### Features
