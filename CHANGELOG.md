@@ -2,6 +2,8 @@
 
 ## Pre-release
 
+## 0.5.0 (2026-11-08)
+
 ### Features
 
 - open `docx` files as rendered markdown when `docx` is added to `file_types` and
