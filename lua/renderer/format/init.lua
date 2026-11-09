@@ -7,13 +7,19 @@ local env = require('renderer.lib.env')
 ---@field handlers table<string, string> treesitter language -> handler module
 ---@field defaults? renderer.partial.UserConfig
 ---@field scroll? boolean keep rendering when scrolled sideways
+---@field source? renderer.format.Source file that is not text, see convert
+
+---@class renderer.format.Source
+---@field patterns string[] BufReadCmd patterns, e.g. '*.docx'
+---@field config string key under `convert` holding the converters
+---@field takeover? fun() remove a competing BufReadCmd
 
 ---@class renderer.format.Registry
 local M = {}
 
 ---@private
 ---@type string[]
-M.names = { 'markdown', 'html', 'csv' }
+M.names = { 'markdown', 'html', 'csv', 'docx' }
 
 ---A module returns one format, or a list when a single definition builds
 ---several, as csv does for csv, tsv and psv.

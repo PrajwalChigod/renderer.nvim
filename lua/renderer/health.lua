@@ -17,7 +17,7 @@ local state = require('renderer.state')
 local M = {}
 
 ---@private
-M.version = '0.4.0'
+M.version = '0.5.0'
 
 function M.check()
     M.start('versions')
@@ -75,6 +75,8 @@ function M.check()
             })
         end
     end
+
+    M.converters()
 
     M.start('conflicts')
     M.plugin('headlines')
@@ -174,6 +176,33 @@ function M.languages()
     table.sort(required)
     table.sort(optional)
     return required, optional, active
+end
+
+---@private
+function M.converters()
+    local convert = require('renderer.convert')
+    for _, format in ipairs(require('renderer.format').all()) do
+        local source = format.source
+        if source and vim.tbl_contains(state.file_types, format.name) then
+            M.start('convert ' .. format.name)
+            local config = state.convert[source.config]
+            local converter = convert.converter(config)
+            if converter then
+                vim.health.ok('using: ' .. vim.inspect(converter.cmd))
+            else
+                local names = vim.tbl_map(function(value)
+                    return value.cmd[1]
+                end, config.converters)
+                local message = 'none installed: ' .. vim.inspect(names)
+                vim.health.warn(message, {
+                    'install one of them, then restart neovim',
+                    ('remove %s from file_types to avoid this warning'):format(
+                        format.name
+                    ),
+                })
+            end
+        end
+    end
 end
 
 ---@private

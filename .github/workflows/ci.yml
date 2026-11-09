@@ -50,6 +50,9 @@ jobs:
             git clone --depth 1 "https://github.com/$repo" "$deps/${repo#*/}"
           done
 
+      - name: Install converters
+        run: sudo apt-get update && sudo apt-get install --yes pandoc
+
       - name: Install parsers
         run: nvim --headless --noplugin -u tests/minimal_init.lua -c 'qa!'
 

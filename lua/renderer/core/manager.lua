@@ -1,3 +1,4 @@
+local convert = require('renderer.convert')
 local cursor = require('renderer.core.cursor')
 local env = require('renderer.lib.env')
 local log = require('renderer.core.log')
@@ -171,7 +172,11 @@ function M.should_attach(buf)
         return false
     end
 
-    local file_type = env.buf.get(buf, 'filetype')
+    -- a converted buffer is listed by the format of its file, docx for one
+    -- holding markdown, and measured by its text rather than the file
+    local source = convert.get(buf)
+
+    local file_type = source and source.format or env.buf.get(buf, 'filetype')
     local file_types = state.file_types
     if not vim.tbl_contains(file_types, file_type) then
         local reason = ('%s /∈ %s'):format(file_type, vim.inspect(file_types))
@@ -179,7 +184,13 @@ function M.should_attach(buf)
         return false
     end
 
-    local file_size = env.file_size_mb(buf)
+    -- text output has no parser and stays plain text
+    if source and not require('renderer.format').get(buf) then
+        log.attach(buf, 'skip', 'converted output has no format')
+        return false
+    end
+
+    local file_size = source and source.size or env.file_size_mb(buf)
     local max_file_size = state.max_file_size
     if file_size > max_file_size then
         local reason = ('%f > %f'):format(file_size, max_file_size)

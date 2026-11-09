@@ -33,9 +33,11 @@ is exactly as it was.
 It is built for markdown. HTML, LaTeX and YAML are handled because they appear
 inside markdown, and HTML is also rendered as a file of its own. What the core
 needs to know about a file type is declared in one place, a format, so that
-more file types can be added as files. Markdown, plain HTML, CSV, TSV and PSV
-are the formats today. The CSV family is the first one built from nothing: it
-adds files and edits none of `core/`.
+more file types can be added as files. Markdown, plain HTML, CSV, TSV, PSV and
+DOCX are the formats today. The CSV family is the first one built from nothing: it
+adds files and edits none of `core/`. DOCX is the first file that is not text: the
+convert layer turns it into a read only markdown buffer, which then renders like
+any other.
 
 ## The pipeline in one view
 
@@ -71,6 +73,7 @@ These words have one meaning each in the code and in this file.
 | display   | The cheap step: show or hide stored extmarks for the cursor position       | `Updater:display`           |
 | component | A per buffer config block such as `heading` or `html`                      | `settings.lua`              |
 | job       | An external process run in the background, its result cached by input      | `lib/job.lua`               |
+| converted | A read only buffer holding a converter's output for a file that is not text | `convert/init.lua`          |
 
 ## Rules that must hold
 
@@ -106,6 +109,10 @@ marks or generated files that drift.
     default links to standard groups, never as fixed colors.
 12. **Neovim 0.12 is the minimum.** There is no compatibility layer, so use
     0.12 APIs directly.
+13. **A converted buffer is never writable.** `convert/init.lua` sets
+    `buftype = 'nowrite'` before the buffer holds any converted text, so `:w`
+    cannot overwrite the original file, and refuses any write of a converted
+    buffer to a file matching its format's patterns.
 
 ## Layout
 
@@ -121,6 +128,7 @@ marks or generated files that drift.
 | `lua/renderer/handler/`     | One file per treesitter language: a query and a capture map       |
 | `lua/renderer/render/`      | One renderer per kind of node, grouped by language                |
 | `lua/renderer/format/`      | The format registry and one declaration per format                |
+| `lua/renderer/convert/`     | Opens files that are not text as read only converted buffers      |
 | `lua/renderer/request/`     | State that lives for one render pass                              |
 | `lua/renderer/lib/`         | Helpers: marks, nodes, lines, display width, entities, config, jobs |
 | `lua/renderer/parser/`      | The pipe table parser                                             |
@@ -142,7 +150,8 @@ marks or generated files that drift.
    initialized.
 2. `state.setup(config)` stores the global values and clears the per buffer
    config cache. It calls `core/ts.lua` to add configured treesitter
-   injections and `core/ui.lua` to clear existing marks.
+   injections, `core/ui.lua` to clear existing marks, and `convert/init.lua`
+   to register a `BufReadCmd` for each converted format in `file_types`.
 3. `colors.init()` defines the `Renderer*` highlight groups, each linked to a
    standard group.
 4. `command.init()` creates `:Renderer`. `log.init()` picks the log file and
@@ -155,7 +164,10 @@ marks or generated files that drift.
 `core/manager.lua` decides which buffers the plugin owns. On `FileType`,
 `should_attach(buf)` rejects the buffer if it is already attached, invalid,
 its filetype is not in `file_types`, its file is larger than `max_file_size`,
-or the user's `ignore` function returns true.
+or the user's `ignore` function returns true. A converted buffer is checked
+against the name of its source format (`docx`) instead of its filetype, against
+the size of its converted text instead of the file, and is rejected when its
+output has no format, as plain `text` output has not.
 
 For an accepted buffer it builds the buffer's config, calls the `on.attach`
 callback, and runs one time setup (`state.attach`): disabling some treesitter
@@ -483,9 +495,15 @@ to it. A format declares what the core needs to know about a file type:
 ---@field handlers table<string, string>     treesitter language -> handler module
 ---@field defaults? renderer.partial.UserConfig
 ---@field scroll? boolean                    keep rendering when scrolled sideways
+---@field source? renderer.format.Source     a file that is not text
+
+---@class renderer.format.Source
+---@field patterns string[]                  BufReadCmd patterns, e.g. '*.docx'
+---@field config string                      key under `convert` holding converters
+---@field takeover? fun()                    remove a competing BufReadCmd
 ```
 
-There are five formats: `markdown`, `html`, `csv`, `tsv` and `psv`:
+There are six formats: `markdown`, `html`, `csv`, `tsv`, `psv` and `docx`:
 
 ```lua
 -- format/markdown.lua
@@ -532,7 +550,26 @@ local function build(name)
     }
 end
 return { build('csv'), build('tsv'), build('psv') }
+
+-- format/docx.lua
+return {
+    name = 'docx',
+    root = 'docx',
+    languages = { markdown = true, markdown_inline = true, html = false, latex = false },
+    handlers = {},
+    source = {
+        patterns = { '*.docx' },
+        config = 'docx',
+        takeover = function() --[[ clear the zip plugin's *.docx BufReadCmd ]] end,
+    },
+}
 ```
+
+A converted format has no root language of its own: its buffers hold markdown
+and resolve to the markdown format. Its `root` is its own name, which no
+treesitter language has, so that `registry.root` finds it from `file_types` for
+the health check. It has no handlers, and `languages` lists the parsers its
+output needs.
 
 The three grammars share one definition and differ in the separator, so each
 is its own format with its own root language. A format file returns either one
@@ -559,6 +596,8 @@ Who reads it:
 | `lib/config.lua`      | `defaults`        | per buffer config, applied before the overrides  |
 | `core/ui.lua`         | `scroll`          | whether to keep rendering when scrolled sideways |
 | `health.lua`          | `languages`       | the parsers `:checkhealth` reports               |
+| `health.lua`          | `source`          | the converter `:checkhealth` reports             |
+| `convert/init.lua`    | `source`          | the `BufReadCmd` and the converters to run       |
 
 The handler map is keyed by language and shared between formats.
 `format.handler(language)` looks across all formats, and if two formats name
@@ -566,7 +605,82 @@ the same language they must name the same module; the registry asserts this.
 
 Only the CSV family sets `defaults` and `scroll`: its rows are wider than the
 window, so `wrap` is off while rendered and rendering continues when scrolled
-sideways. `context.format` is read by the HTML structure renderers.
+sideways. `context.format` is read by the HTML structure renderers. Only DOCX
+sets `source`.
+
+## Convert layer
+
+`lua/renderer/convert/init.lua` turns a file that is not text into a buffer the
+pipeline can render. It adds no renderers: the output is markdown, and the
+markdown format draws it.
+
+```text
+setup            for each format with a source, in file_types, converter installed:
+                   BufReadCmd on its patterns, takeover() now and on SourcePost
+BufWritePre etc  throw when a converted buffer is written to its patterns
+BufReadCmd       file gone and buffer converted before?  say so, stop
+                 buftype nowrite, noswapfile
+                 cached?  set lines at once
+                 no       placeholder line -> job.run(converter, disk = true)
+  on success     set lines, lock the buffer, set filetype to the converter's output
+  on failure     show the command and stderr, filetype left empty
+FileType         manager.attach, the normal pipeline from here
+```
+
+The converters of a format are under `convert.<config>` in the global config,
+each a `cmd` in which `{file}` is replaced with the path, and an `output`
+filetype. The first whose executable is installed is used. The convert block is
+global, not a component: the `BufReadCmd` is registered at setup, before any
+buffer exists.
+
+The buffer contract:
+
+| Property     | Value                | Why                                            |
+| ------------ | -------------------- | ---------------------------------------------- |
+| name         | the real file path   | `:e`, buffer lists and pickers behave normally |
+| `buftype`    | `nowrite`            | `:w` cannot overwrite the binary with text     |
+| `modifiable` | false                | nothing to edit                                |
+| `swapfile`   | false                | no swap file next to a document                |
+| `filetype`   | `markdown` or `text` | set by the converter's `output`                |
+
+`buftype = 'nowrite'` is the safety property of the whole feature and has its
+own spec. It stops `:w` and `:w!`, but not a write to another name: `:w other.md`
+saves the converted text, which is wanted, and after `:saveas other.md` a
+`:w! file.docx` would write it over the original. So `BufWritePre`,
+`FileWritePre` and `FileAppendPre` on the format's patterns throw for a buffer
+that has `b:renderer_convert`, which aborts the write. It has to be a Vimscript
+`throw` (`convert.guard`): an error from a Lua callback is reported but a typed
+`:w!` still writes, it only aborts when the write runs inside `vim.cmd`. The spec
+runs its writes in a child neovim for this reason. `nowrite` also keeps language
+servers started by `vim.lsp.enable` away, as those skip buffers with a
+`buftype`. The lines are set with `undolevels = -1`, so `u` has nothing to undo.
+
+Converted buffers get `overrides.convert`, by default `render_modes = true` with
+`anti_conceal` off. It is not keyed on `buftype`: other plugins (diffview,
+fugitive) make `nowrite` buffers too, and those keep the normal config.
+
+What `should_attach` needs is kept in `vim.b[buf].renderer_convert`
+(`convert.get(buf)`): the source format name, the size of the converted text,
+and the id of the read that filled the buffer. A conversion that finishes after
+the buffer was read again carries an older id and is dropped, and so is one for
+a buffer that was unloaded meanwhile, since setting its lines would load it
+again. Setting the filetype attaches a buffer seen for the first time, which
+renders it. Reading an attached buffer again (`:e`) replaces its lines and forces
+an update instead, since `FileType` does not attach twice.
+
+The request passes the path in `cmd` and the file's mtime and size as `key`, so
+the file is converted again only when it changes, and sets `disk` so the result
+outlives the session. A file that does not exist is left as an empty, ordinary
+buffer, unless the buffer was converted before: then the file was moved or
+deleted, and the buffer says so and stays read only. Nothing reads the file
+again on its own, `autoread` and `:checktime` do not see a converted buffer
+change, so `:e` is the way to pick up a new version.
+
+Without a converter, or without the format in `file_types`, nothing is
+registered and `.docx` keeps opening in the zip browser. The zip plugin can be
+sourced after this plugin at startup, so `takeover` runs once at setup and again
+on every `SourcePost` of a `plugin/` file. It removes only the zip plugin's
+`*.docx` autocmd, every other archive stays with it.
 
 ## Marks
 
@@ -643,8 +757,9 @@ Config values are of two kinds:
 
 The per buffer config starts from the root config, applies the `defaults` of
 the buffer's format, and then applies `overrides` in this order, later ones
-winning: `buflisted`, `buftype`, `filetype`, `preview` (for the preview
-buffer), then any config passed to `api.render`. This is how hover windows,
+winning: `buflisted`, `buftype`, `filetype`, `convert` (for a converted
+buffer), `preview` (for the preview buffer), then any config passed to
+`api.render`. This is how hover windows,
 which are `nofile` buffers, get different settings from files. A preview
 buffer uses the format of its source buffer, as it does for the overrides.
 Format `defaults` are applied on top of the user's top level config, so a
@@ -710,7 +825,8 @@ Every user facing change also needs a spec (see Tests) and a line under
   can be edited raw. Lines, cursor and events are mirrored across.
 - **Completions.** `integ/` offers callout and checkbox completions through
   an in process LSP server or a completion plugin.
-- **External tools.** `lib/job.lua` runs them for mermaid, see below.
+- **External tools.** `lib/job.lua` runs them for mermaid and the convert
+  layer, see below.
   LaTeX does not use it yet: `handler/latex.lua` starts the converter for
   each formula with `vim.system` and waits for it to exit inside the render
   pass, with results cached by formula text.
@@ -724,6 +840,7 @@ Every user facing change also needs a spec (see Tests) and a line under
   ---@field stdin? string
   ---@field timeout? integer     ms, default 5000
   ---@field key? string          extra text mixed into the cache key
+  ---@field disk? boolean         also keep a successful result on disk
 
   ---@class renderer.job.Result
   ---@field ok boolean
@@ -741,7 +858,14 @@ Every user facing change also needs a spec (see Tests) and a line under
   slow under load is tried again; not at once, because the refresh after the
   failure would start it again forever. The cache lives in memory for the
   session; `job.clear()` empties it and `job.reset()` also drops queued and
-  running jobs, whose callbacks are then never called, for specs.
+  running jobs, whose callbacks are then never called, for specs. A request
+  with `disk` also writes a successful result to `job.dir`
+  (`stdpath('cache')/renderer/`), one file per key, written to a temporary file
+  and renamed, and reads it back on a memory miss. The folder is created `0700`
+  and the files `0600`, since they hold the text of private documents. A short
+  write, as on a full disk, fails the save and removes the temporary file, so a
+  cut off text is never served later. Failures never reach the disk. Nothing
+  prunes that folder.
 - **Logging.** `core/log.lua` writes to a file under `stdpath('state')` at the
   configured level.
 - **Debug.** `:Renderer debug` lists the marks on the cursor row,
@@ -758,7 +882,11 @@ installs the parsers, and starts the treesitter highlighter for `markdown`,
 exit callback, as `lib/job.lua` makes, finishes on the main loop, can be held
 back until `release()`, and fails for an output given as `false`. Mermaid specs
 wait for the second render with a few short `vim.wait` calls.
-`tests/unit/job_spec.lua` uses real commands (`cat`, `sh`, `sleep`) instead.
+`tests/unit/job_spec.lua` uses real commands (`cat`, `sh`, `sleep`) instead,
+and so does `tests/convert_spec.lua`, whose converters print a fixture file, so
+the `:w` guard is covered with no external tool installed. Its one `pandoc` spec
+is only defined when `pandoc` is installed. Specs that take a file over from the
+zip plugin source `zipPlugin.vim` themselves, as `--noplugin` skips it.
 
 A render spec sets up a scratch buffer and asserts two things: the exact list
 of marks, and the text on screen.
@@ -795,8 +923,7 @@ remain, and each is addressed by a planned change in part 2.
 
 | Where                              | Assumption                                              | Effect on other formats                           |
 | ---------------------------------- | ------------------------------------------------------- | ------------------------------------------------- |
-| `core/ui.lua` `Updater:parse`      | the buffer has a treesitter parser                      | binary files cannot enter the pipeline            |
-| `core/manager.lua` `should_attach` | the buffer text is the file on disk, for the size check | a large PDF is refused although its text is small |
+| `core/ui.lua` `Updater:parse`      | the buffer has a treesitter parser                      | text output (PDF) is not rendered, only shown     |
 | `handler/latex.lua`                | waits for its converter inside the render pass          | slow formulas block rendering, unlike mermaid     |
 | `tests/util.lua`, `minimal_init`   | highlighter started for markdown, html and csv only     | a spec for another filetype needs `minimal_init`  |
 
@@ -809,13 +936,15 @@ on these fields. When one of them is built, follow the design here and move
 its section into part 1.
 
 The goal is to render more than markdown: data files, diagrams inside
-markdown, and documents that are not text (DOCX, PDF). The format registry,
-plain HTML files, CSV files, mermaid diagrams and the job runner, described in
-part 1, are done. One component remains:
+markdown, and documents that are not text. The format registry, plain HTML
+files, CSV files, mermaid diagrams, the job runner and the convert layer with
+DOCX, described in part 1, are done. What remains:
 
-| Component     | Module                          | Built together with its first user |
-| ------------- | ------------------------------- | ---------------------------------- |
-| Convert layer | `lua/renderer/convert/init.lua` | DOCX files                         |
+| Work               | Module                                 | Needs                                    |
+| ------------------ | -------------------------------------- | ---------------------------------------- |
+| PDF files          | `format/pdf.lua`                       | text output decorated once at load       |
+| LaTeX through jobs | `handler/latex.lua`                    | nothing new, the runner is in place      |
+| HTML reader view   | `core/reader.lua`                      | the convert layer, from a buffer of text |
 
 ## Principles
 
@@ -837,86 +966,38 @@ HTML, CSV, TSV, PSV, and markdown itself.
 
 **B. Convert, then decorate.** A tool turns the file into markdown, the result
 goes into a read only buffer, the markdown format renders it. No new renderers.
-Used for DOCX, PDF, the HTML reader view, and later ODT, EPUB, notebooks.
+Used for DOCX, and planned for PDF, the HTML reader view, and later ODT, EPUB,
+notebooks.
 
 A third case sits inside a document rather than being one: **converted
 blocks**. A node's text is sent to a tool and the output is shown in its place.
-LaTeX formulas work this way, waiting for their tool, and mermaid diagrams
-through the job runner.
+Mermaid diagrams work this way through the job runner, and LaTeX formulas will.
 
-## Additions to the format registry
+## Text output
 
-The registry itself is in place and described in part 1. The planned formats
-add to it:
+The convert layer sets the filetype of a converted buffer to its converter's
+`output`, and a `text` buffer is shown but not rendered: it has no format, so
+`should_attach` rejects it. `pdftotext -layout` output parsed as markdown would
+turn every indented line into a code block, so PDF needs `text`, and one more
+field on `renderer.format.Source`:
 
-- **A `source` field for model B**, read by `convert/init.lua`:
-
-  ```lua
-  ---@class renderer.Format
-  ---@field source? renderer.format.Source     model B only
-
-  ---@class renderer.format.Source
-  ---@field patterns string[]                  BufReadCmd patterns, e.g. '*.docx'
-  ---@field config string                      key under `convert` holding converters
-  ---@field takeover? fun()                    remove a competing BufReadCmd
-  ---@field decorate? fun(buf: integer)        one time marks for text output
-  ```
-
-- **`health.lua` reports converters** from the registry, as it does parsers.
-
-## Job runner: what is left
-
-The runner is in place and described in part 1. Two of its planned consumers
-remain:
-
-- **The convert layer** adds `disk?: boolean` to `renderer.job.Request`, to
-  also cache a result under `stdpath('cache')/renderer/`, and passes path,
-  mtime and size as `key`.
-- **LaTeX** moves onto it, which drops its blocking wait and its dead
-  `vim.fn.system` branch. A formula then renders raw until its output is
-  ready, as a mermaid block does.
-
-## Convert layer
-
-`lua/renderer/convert/init.lua`. Turns a file that is not text into a buffer
-the pipeline can render.
-
-```text
-setup            for each format with a source, enabled, converter installed:
-                   takeover(), then BufReadCmd on its patterns
-BufReadCmd       placeholder line -> job.run(converter, disk = true)
-  on success     set lines, lock the buffer, set filetype
-  on failure     show the command and stderr in the buffer
-FileType         manager.attach, the normal pipeline from here
+```lua
+---@field decorate? fun(buf: integer)        one time marks for text output
 ```
 
-The buffer contract:
+Text buffers are decorated once at load by the format's `decorate` function in
+the convert layer's own namespace (page separators, page numbers), which is
+safe because the buffer cannot change. This is why no non-treesitter path is
+added to the render loop. PDF is then a `format/pdf.lua` with a `source`, and a
+`convert.pdf` block in `settings.lua` with `pdftotext -layout {file} -`.
 
-| Property     | Value                | Why                                            |
-| ------------ | -------------------- | ---------------------------------------------- |
-| name         | the real file path   | `:e`, buffer lists and pickers behave normally |
-| `buftype`    | `nowrite`            | `:w` cannot overwrite the binary with text     |
-| `modifiable` | false                | nothing to edit                                |
-| `swapfile`   | false                | no swap file next to a PDF                     |
-| `filetype`   | `markdown` or `text` | set by the converter's `output`                |
+## LaTeX through the job runner
 
-`buftype = 'nowrite'` is the safety property of the whole feature and gets its
-own spec. It also gives converted buffers a config hook for free:
-`overrides.buftype.nowrite` gets a default of `render_modes = true` and
-`anti_conceal` off, using the override mechanism that exists already.
-
-Each converter declares its `output`. `markdown` buffers go through the
-markdown format. `text` buffers do not: `pdftotext -layout` output parsed as
-markdown would turn every indented line into a code block. Text buffers are
-decorated once at load by the format's `decorate` function in the convert
-layer's own namespace (page separators, page numbers), which is safe because
-the buffer cannot change. This is why no non-treesitter path is added to the
-render loop.
-
-A format is registered only when one of its converters is installed. Without
-pandoc, `.docx` keeps opening in the zip browser as it does today.
-
-`should_attach` uses the size of the converted text for these buffers.
+`handler/latex.lua` still starts its converter with `vim.system` and waits for
+it inside the render pass, with a dead `vim.fn.system` branch. Moving it onto
+`job.run` drops both: a formula then renders raw until its output is ready, as
+a mermaid block does, and `lib/job.lua` becomes the only place that starts a
+process.
 
 ## Converted blocks
 
@@ -937,20 +1018,17 @@ change.
 
 ```text
 lua/renderer/
-  format/            ADD   docx.lua, pdf.lua
-  lib/job.lua        CHG   disk cache for converted files
-  convert/init.lua   NEW   BufReadCmd, buffer contract, text decoration
+  format/            ADD   pdf.lua
+  convert/init.lua   CHG   text decoration
   core/reader.lua    NEW   HTML reader view
-  core/manager.lua   CHG   size check for converted buffers
-  health.lua         CHG   converters from registry
   handler/latex.lua  CHG   formulas through lib/job.lua
-  settings.lua       ADD   convert, reader blocks
+  settings.lua       ADD   convert.pdf, reader blocks
 ```
 
 `init.lua` keeps its literal `default` table, because `scripts/update.py`
 parses it.
 
-## Recipes once the planned work exists
+## Recipes
 
 **In place format** (CSV is built this way):
 
@@ -960,13 +1038,13 @@ parses it.
 4. A `csv` block in `settings.lua` with types and schema, its name in the
    component list, and its line in `init.lua` `default`.
 
-**Converted format** (DOCX as the example):
+**Converted format** (DOCX is built this way):
 
 1. `format/docx.lua` with a `source`, and its name in `format/init.lua`.
-2. Converters under `convert.docx` in `settings.lua`.
+2. Converters under `convert.docx` in `settings.lua`, with their schema.
 
 **Converted format using a tool already supported** (ODT through pandoc): a
-config entry.
+format file with a `source` and a `convert` block naming the tool.
 
 **Converted block**: a config block with a `converter` list, and a call to
 `job.run` in the renderer that owns the node, as `render/markdown/mermaid.lua`
@@ -981,11 +1059,10 @@ is missing a field and the fix belongs there.
 - Format specs use `tests/util.lua` `setup.text` with a filetype, and live in
   their own files that leave the markdown specs alone. `minimal_init` starts
   the highlighter for each new format's filetype.
-- `convert/` is tested with trivial commands that print a fixture, as
-  `tests/unit/job_spec.lua` is, so the `:w` guard is covered with no external
-  tool installed.
-- One real fixture spec per converter, skipped when the tool is absent. CI
-  installs `pandoc` and `poppler-utils`.
+- Converters are tested with trivial commands that print a fixture, as
+  `tests/convert_spec.lua` is, plus one real fixture spec per converter,
+  skipped when the tool is absent. CI installs `pandoc`, and will need
+  `poppler-utils` for PDF.
 
 ## Alternatives rejected
 
@@ -999,6 +1076,9 @@ is missing a field and the fix belongs there.
 - **A dedicated filetype for converted buffers.** It would need the markdown
   parser registered for it and the highlighter started by hand, and gains
   only the ability to tell the buffers apart, which `buftype` already gives.
+- **DOCX on by default once pandoc is installed.** Users with pandoc installed
+  for other reasons would lose the zip browser for `.docx` files without asking
+  for it. Like HTML and CSV it is opt in through `file_types`.
 - **Downloading parsers or tools on demand.** Bypasses the user's plugin
   manager, fails offline, supply chain risk.
 - **Building the job runner and convert layer before their first user.** Their
@@ -1006,9 +1086,6 @@ is missing a field and the fix belongs there.
 
 ## Not verified
 
-- That `markdown` as the filetype of a converted buffer causes no trouble with
-  common markdown ftplugins and language servers. `buftype = 'nowrite'` should
-  keep servers from attaching, to be confirmed with the convert layer.
 - lazy.nvim replaying `BufReadCmd` after loading the plugin on a pattern
   event.
 - `vim.ui.img` function signatures.

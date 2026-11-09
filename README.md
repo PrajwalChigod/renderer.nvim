@@ -33,6 +33,7 @@ Improve viewing Markdown in Neovim
 - Large files: only renders visible range, can be entirely disabled based on size
 - Custom rendering: provides extension point where user can add anything
 - Data files: opt in rendering of `csv`, `tsv` and `psv` files as aligned tables
+- Documents: opt in reading of `docx` files as rendered `markdown` [^4]
 - Renders the following `markdown` components out of the box:
   - Headings: icon, color, border, padding, width
   - Code blocks: background, language icon [^1], border, padding, width
@@ -51,6 +52,7 @@ Improve viewing Markdown in Neovim
 [^1]: Requires icon provider, `mini.icons` or `nvim-web-devicons`
 [^2]: Requires `latex` parser and `pylatexenc`
 [^3]: Requires `mermaid-ascii`
+[^4]: Requires `pandoc`
 
 # Requirements
 
@@ -77,6 +79,8 @@ Improve viewing Markdown in Neovim
     Used to transform `latex` strings to appropriate unicode using `latex2text`
   - [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii) (Optional):
     Used to draw `mermaid` code blocks as diagrams
+  - [pandoc](https://pandoc.org/installing.html) (Optional):
+    Used to open `docx` files as `markdown`
 
 # Install
 
@@ -249,6 +253,25 @@ require('renderer').setup({
                 { id = 17, name = 'conceal_lines' },
                 { id = 18, name = 'conceal_lines' },
             },
+        },
+    },
+    convert = {
+        -- Files that are not text, opened as a read only copy converted by an external tool. Only
+        -- used for the formats listed in `file_types`, the file itself is never written.
+
+        docx = {
+            -- Commands tried in order, the first one whose executable is installed is used. `{file}`
+            -- is replaced with the path of the file, and the command prints the converted text.
+            -- | markdown | rendered like any markdown buffer |
+            -- | text     | shown as plain text               |
+            converters = {
+                {
+                    cmd = { 'pandoc', '--from=docx', '--to=gfm', '{file}' },
+                    output = 'markdown',
+                },
+            },
+            -- Milliseconds to wait for the converter before giving up on a file.
+            timeout = 30000,
         },
     },
     anti_conceal = {
@@ -1094,6 +1117,11 @@ require('renderer').setup({
         },
         -- Override for different filetype values, @see :h 'filetype'.
         filetype = {},
+        -- Override for files opened through `convert`, read only so nothing is revealed for editing.
+        convert = {
+            render_modes = true,
+            anti_conceal = { enabled = false },
+        },
         -- Override for preview buffer.
         preview = {
             render_modes = true,
@@ -2040,6 +2068,35 @@ can be set as `mermaid.converter`.
 
 A block inside a block quote is left as a code block, since the quote marker is
 not drawn next to the diagram.
+
+## DOCX Files
+
+Word documents can be read as rendered markdown, this is opt in. Install
+[pandoc](https://pandoc.org/installing.html), for example with `brew install pandoc`
+or `sudo apt install pandoc`, and add `docx` to `file_types`:
+
+```lua
+require('renderer').setup({
+    file_types = { 'markdown', 'docx' },
+})
+```
+
+Opening a `.docx` file then shows a read only buffer holding what `pandoc` makes of
+it, rendered like any markdown file. The file itself is never written: the buffer
+has `buftype=nowrite`, so `:w` fails, and writing the converted text to any `.docx`
+file is refused, while `:w notes.md` saves the markdown to a new file. The tool runs
+in the background and the buffer reads `Converting…` until it is done. The result
+is cached under `stdpath('cache')/renderer/`, readable by your user only, so the
+file is converted again only once it changes. Changes to the file are picked up
+with `:e`. When the tool fails the buffer shows the command and its error instead.
+
+Converted buffers get the `overrides.convert` config, which disables
+`anti_conceal`, since there is nothing to edit. Without `pandoc`, or without `docx`
+in `file_types`, `.docx` files open in the zip browser as before. `:checkhealth
+renderer` reports the converter in use. Another tool can be set in
+`convert.docx.converters`, see the default configuration.
+
+See [Limitations](doc/limitations.md) for what is not rendered.
 
 ## Images
 

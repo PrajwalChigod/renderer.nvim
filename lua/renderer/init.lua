@@ -44,6 +44,7 @@ local M = {}
 ---@field restart_highlighter boolean
 ---@field injections renderer.injection.Configs
 ---@field patterns renderer.pattern.Configs
+---@field convert renderer.convert.Config
 ---@field on renderer.on.Config
 ---@field completions renderer.completions.Config
 ---@field custom_handlers table<string, renderer.Handler>
@@ -95,6 +96,7 @@ M.default = {
     restart_highlighter = false,
     injections = settings.injections.default,
     patterns = settings.patterns.default,
+    convert = settings.convert.default,
     anti_conceal = settings.anti_conceal.default,
     padding = settings.padding.default,
     latex = settings.latex.default,

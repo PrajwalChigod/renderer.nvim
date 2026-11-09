@@ -9,13 +9,16 @@ inside buffers using treesitter and extmarks. Requires neovim >= 0.12.
 - `lua/renderer/settings.lua`: all config defaults, types and schemas
 - `lua/renderer/format/`: format registry, one file per format declaring its
   root language, parsers, handlers and defaults (`csv.lua` declares `csv`,
-  `tsv` and `psv`)
+  `tsv` and `psv`, `docx.lua` declares a converted format with a `source`)
 - `lua/renderer/handler/`: one handler per treesitter language, runs
   queries and dispatches captures to renderers
 - `lua/renderer/render/`: renderers grouped by language, each extends
   `render/base.lua` with `setup()` and `run()`
 - `lua/renderer/lib/job.lua`: the only place that starts a process, runs
-  external tools in the background and caches their output
+  external tools in the background and caches their output (in memory, and on
+  disk for converted files)
+- `lua/renderer/convert/init.lua`: opens files that are not text (`docx`) as
+  read only buffers holding a converter's markdown, never writable
 - `lua/renderer/core/colors.lua`: `Renderer*` highlight groups
 - `lua/renderer/core/cursor.lua`: moves the cursor off lines that are hidden
   completely

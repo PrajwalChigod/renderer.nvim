@@ -24,6 +24,7 @@ function M.setup(config)
     M.restart_highlighter = config.restart_highlighter
     M.injections = config.injections
     M.patterns = config.patterns
+    M.convert = config.convert
     M.on = config.on
     M.completions = config.completions
     M.custom_handlers = config.custom_handlers
@@ -33,6 +34,7 @@ function M.setup(config)
 
     require('renderer.core.ts').setup()
     require('renderer.core.ui').setup()
+    require('renderer.convert').setup()
 end
 
 ---@param buf integer
@@ -96,6 +98,7 @@ function M.validate()
             restart_highlighter = { type = 'boolean' },
             injections = settings.injections.schema(),
             patterns = settings.patterns.schema(),
+            convert = settings.convert.schema(),
             on = settings.on.schema(),
             completions = settings.completions.schema(),
             overrides = settings.overrides.schema(),

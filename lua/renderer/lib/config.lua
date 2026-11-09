@@ -64,6 +64,9 @@ function Config.new(root, enabled, buf, custom)
     extend(root.overrides.buflisted[env.buf.get(src or buf, 'buflisted')])
     extend(root.overrides.buftype[env.buf.get(src or buf, 'buftype')])
     extend(root.overrides.filetype[env.buf.get(src or buf, 'filetype')])
+    extend(
+        require('renderer.convert').get(src or buf) and root.overrides.convert
+    )
     extend(src and root.overrides.preview)
     extend(custom)
 

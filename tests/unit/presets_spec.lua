@@ -33,12 +33,14 @@ describe('presets', function()
             code = { style = 'none' },
             overrides = {
                 buftype = { nofile = { code = { style = 'normal' } } },
+                convert = { code = { style = 'normal' } },
                 preview = { pipe_table = { style = 'normal' } },
             },
         }, {
             code = { enabled = false },
             overrides = {
                 buftype = { nofile = { code = { language = false } } },
+                convert = { code = { language = false } },
                 preview = { pipe_table = { border_enabled = false } },
             },
         })
